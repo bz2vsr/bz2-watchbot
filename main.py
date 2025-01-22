@@ -153,7 +153,7 @@ class BZBot:
             mod_name = mods_mapping.get(mod_id, {}).get('Name', 'Unknown')
             mod_url = mods_mapping.get(mod_id, {}).get('Url')
 
-            # Format mod field with mod link first, then version on next line
+            # Format mod field with mod link first, then plain version on next line
             if mod_url:
                 mod_field = f"[{mod_name}]({mod_url})\n{game_version}"
             else:
