@@ -4,6 +4,11 @@ import logging
 from datetime import datetime
 import aiohttp
 import config
+import sys
+
+# Set event loop policy for Windows
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Set up logging with custom format
 class CustomFormatter(logging.Formatter):
@@ -22,23 +27,21 @@ logger.handlers = [handler]  # Replace any existing handlers
 class BZBot:
     def __init__(self):
         """Initialize the GameWatch client"""
-        super().__init__()
         self.session = None
-        self.previous_sessions = {}  # Track sessions by ID
-        self.message_ids = {}  # Track Discord message IDs for each session
-        self.message_counter = 0  # Add a counter for generating message IDs
+        self.previous_sessions = {}
+        self.message_ids = {}
+        self.message_counter = 0
         self.is_running = True
         self.sessions = {}
-        self.mods = {}  # Store current mods data
+        self.mods = {}
         self.last_update = None
         self.update_lock = asyncio.Lock()
-        self.channel = None
         self.messages = {}
         self.active_sessions = {}
-        self.player_counts = {}  # Track previous player counts
-        self.last_api_responses = {}  # Track last known API responses
-        self.last_known_states = {}   # Add tracking for last known complete session states
-        self.last_known_mods = {}     # Add tracking for last known mods data
+        self.player_counts = {}
+        self.last_api_responses = {}
+        self.last_known_states = {}
+        self.last_known_mods = {}
         
         # Load VSR map list data
         try:
@@ -47,7 +50,6 @@ class BZBot:
         except Exception as e:
             print(f"Warning: Could not load vsrmaplist.json: {e}")
             self.vsr_maps = []
-
 
     async def initialize(self):
         self.session = aiohttp.ClientSession()
@@ -65,8 +67,6 @@ class BZBot:
                 return await response.json()
         except Exception as e:
             logger.error(f"Failed to fetch API data: {e}")
-            if response:
-                logger.error(f"Response text: {await response.text()}")
             return None
 
     async def format_session_embed(self, session, mods_mapping, api_response=None):
@@ -242,28 +242,17 @@ class BZBot:
                 # Get player name from profile data, fallback to session name if not found
                 player_name = profile_names.get(profile_key, player.get('Name', 'Unknown'))
                 
-                # Debug logging for team leader status
-                print(f"\n=== Player Team Debug ===")
-                print(f"Player: {player_name}")
-                print(f"Team Data: {team_data}")
-                print(f"Leader Status: {team_data.get('Leader')}")
-                print(f"Profile Key: {profile_key}")
-                print(f"Profile URL: {profile_urls.get(profile_key)}")
-                
                 # Add commander prefix if player is team leader
                 if team_data.get('Leader') is True:
                     prefix = "C: "
-                    print(f"Adding commander prefix for {player_name}")
                 else:
                     prefix = ""
                 
                 # Create clickable player name if we have their profile
                 if profile_key and profile_urls.get(profile_key):
                     player_name = f"{prefix}[{player_name}]({profile_urls[profile_key]})"
-                    print(f"Added profile link: {player_name}")
                 else:
                     player_name = f"{prefix}{player_name}"
-                    print(f"No profile link available: {player_name}")
                 
                 kills = player.get('Stats', {}).get('Kills', 0)
                 deaths = player.get('Stats', {}).get('Deaths', 0)
@@ -524,10 +513,13 @@ class BZBot:
             logger.error(f"Error sending Discord notification: {str(e)}")
             logger.debug(f"Current message IDs: {self.message_ids}")
 
-    async def send_player_count_notification(self, player_count, max_players):
+    async def send_player_count_notification(self, player_count, max_players, change_msg=None):
         """Send a notification about player count changes"""
-        spots_left = max_players - player_count
-        content = f"👥 {player_count}/{max_players} ({spots_left} spots left) @everyone"
+        if change_msg:
+            content = f"{player_count}/{max_players} ({change_msg}) @everyone"
+        else:
+            spots_left = max_players - player_count
+            content = f"👥 {player_count}/{max_players} ({spots_left} spots left) @everyone"
         
         webhook_data = {
             "content": content
@@ -541,8 +533,19 @@ class BZBot:
         """Check if session has any monitored players"""
         for player in session.get('Players', []):
             player_ids = player.get('IDs', {})
+            
+            # Check Steam ID
             steam_data = player_ids.get('Steam', {})
             if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                return True
+            
+            # Check GOG ID
+            gog_data = player_ids.get('Gog', {})
+            if gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                return True
+                
+            # Check player name (for non-numeric IDs like "herpmcderperson" or "bz2Cyber")
+            if player.get('Name') in config.MONITORED_STEAM_IDS:
                 return True
         return False
 
@@ -553,69 +556,154 @@ class BZBot:
             if not api_response:
                 return
 
+            # Update mods mapping from API response
+            self.mods = api_response.get('Mods', {})
+
             for session in api_response.get('Sessions', []):
                 session_id = session.get('ID')
                 session_name = session.get('Name', 'Unknown')
                 if not session_id:
                     continue
 
-                # Get current and max player counts
-                current_players = session.get('PlayerCount', {}).get('Player', 0)
-                max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
-                
-                print(f"\n=== Player Count Debug ===")
-                print(f"Game Name: {session_name}")
-                print(f"Session ID: {session_id}")
-                print(f"Current Players: {current_players}")
-                print(f"Max Players: {max_players}")
-                print(f"Previous Count: {self.player_counts.get(session_id, 0)}")
-                
-                # Check if this is a new session or player count has changed
-                if session_id in self.active_sessions:
+                # Only process sessions with monitored players
+                if not await self.has_monitored_player(session):
+                    # If we were tracking this session but monitored player left, mark it as ended
+                    if session_id in self.active_sessions:
+                        await self.mark_session_ended(session_id, session, self.mods, api_response)
+                    continue
+
+                current_state = session.get('Status', {}).get('State')
+                previous_state = self.last_known_states.get(session_id)
+
+                # Check for game end (InGame -> PreGame transition)
+                if previous_state == "InGame" and current_state == "PreGame":
+                    print(f"[{session_name}] Game ended, creating new embed")
+                    
+                    # Mark the old embed as ended
+                    if session_id in self.message_ids:
+                        old_message_id = self.message_ids[session_id]
+                        try:
+                            # Get the old message
+                            webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{old_message_id}"
+                            async with self.session.get(webhook_url) as response:
+                                if response.status == 200:
+                                    old_message = await response.json()
+                                    old_embed = old_message['embeds'][0]
+                                    old_embed['title'] = f"{old_embed['title']} (Game Ended)"
+                                    
+                                    # Update the message
+                                    patch_data = {"embeds": [old_embed]}
+                                    async with self.session.patch(webhook_url, json=patch_data) as patch_response:
+                                        if patch_response.status not in [200, 204]:
+                                            print(f"Error updating old embed: {patch_response.status}")
+                        except Exception as e:
+                            print(f"Error updating old embed: {e}")
+                    
+                    # Create new embed for the new game
+                    embed = await self.format_session_embed(session, self.mods, api_response)
+                    webhook_data = {
+                        "embeds": [embed]
+                    }
+                    
+                    try:
+                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
+                        async with self.session.post(webhook_url, json=webhook_data) as response:
+                            if response.status == 200:
+                                response_data = await response.json()
+                                self.message_ids[session_id] = response_data['id']
+                            else:
+                                print(f"Error creating new embed: {response.status}")
+                    except Exception as e:
+                        print(f"Error creating new embed: {e}")
+
+                # Normal session updates
+                elif session_id in self.active_sessions:
+                    # Get current and max player counts
+                    current_players = session.get('PlayerCount', {}).get('Player', 0)
+                    max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
                     previous_count = self.player_counts.get(session_id, 0)
                     
                     if current_players != previous_count:
-                        print(f"[{session_name}] Player count changed from {previous_count} to {current_players}")
-                        
                         # Get list of current and previous players
                         current_players_list = {p.get('Name') for p in session.get('Players', [])}
                         previous_players_list = {p.get('Name') for p in self.active_sessions[session_id].get('Players', [])}
-                        
-                        print(f"[{session_name}] Current players: {current_players_list}")
-                        print(f"[{session_name}] Previous players: {previous_players_list}")
                         
                         # Determine who joined or left
                         if current_players > previous_count:
                             joined_players = current_players_list - previous_players_list
                             player_name = next(iter(joined_players)) if joined_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} joined) @everyone"
-                            print(f"[{session_name}] Join detected: {message}")
+                            print(f"[{session_name}] {player_name} joined ({current_players}/{max_players})")
+                            await self.send_player_count_notification(current_players, max_players, f"{player_name} joined")
                         else:
                             left_players = previous_players_list - current_players_list
                             player_name = next(iter(left_players)) if left_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} left) @everyone"
-                            print(f"[{session_name}] Leave detected: {message}")
-                        
-                        # Post the notification
+                            print(f"[{session_name}] {player_name} left ({current_players}/{max_players})")
+                            await self.send_player_count_notification(current_players, max_players, f"{player_name} left")
+
+                    # Update existing embed if needed
+                    if session_id in self.message_ids:
+                        message_id = self.message_ids[session_id]
+                        embed = await self.format_session_embed(session, self.mods, api_response)
+                        webhook_data = {
+                            "embeds": [embed]
+                        }
+                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{message_id}"
                         try:
-                            webhook_url = config.DISCORD_WEBHOOK_URL
-                            webhook_data = {
-                                "content": message
-                            }
-                            
-                            async with self.session.post(webhook_url, json=webhook_data) as response:
-                                if response.status == 204:
-                                    print(f"[{session_name}] Successfully sent player count notification")
-                                else:
-                                    print(f"[{session_name}] Failed to send notification: {response.status}")
+                            async with self.session.patch(webhook_url, json=webhook_data) as response:
+                                if response.status not in [200, 204]:
+                                    print(f"Error updating embed: {response.status}")
                         except Exception as e:
-                            print(f"[{session_name}] Error sending notification: {e}")
+                            print(f"Error updating embed: {e}")
+
+                else:
+                    # New session
+                    embed = await self.format_session_embed(session, self.mods, api_response)
+                    
+                    # Get host name for notification
+                    host_name = "Unknown"
+                    if session.get('Players'):
+                        host_player = session['Players'][0]
+                        host_ids = host_player.get('IDs', {})
+                        
+                        # Try Steam ID first
+                        steam_data = host_ids.get('Steam', {})
+                        if steam_data and steam_data.get('ID'):
+                            profile_key = f"S{steam_data['ID']}"
+                        else:
+                            # Try GOG ID if Steam ID not found
+                            gog_data = host_ids.get('Gog', {})
+                            profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
+                        
+                        # Get host name from profile data if available
+                        if api_response and 'DataCache' in api_response:
+                            player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
+                            if profile_key and profile_key.startswith('S'):
+                                steam_id = profile_key[1:]  # Remove 'S' prefix
+                                host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
+                            elif profile_key and profile_key.startswith('G'):
+                                gog_id = profile_key[1:]  # Remove 'G' prefix
+                                host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
+                    
+                    webhook_data = {
+                        "content": f"🆕 Game Up (Host: {host_name}) @everyone",
+                        "embeds": [embed]
+                    }
+                    
+                    try:
+                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
+                        async with self.session.post(webhook_url, json=webhook_data) as response:
+                            if response.status == 200:
+                                response_data = await response.json()
+                                self.message_ids[session_id] = response_data['id']
+                            else:
+                                print(f"Error creating embed: {response.status}")
+                    except Exception as e:
+                        print(f"Error creating embed: {e}")
 
                 # Update tracking
                 self.active_sessions[session_id] = session
-                self.player_counts[session_id] = current_players
-
-            # ... rest of existing check_sessions code ...
+                self.player_counts[session_id] = session.get('PlayerCount', {}).get('Player', 0)
+                self.last_known_states[session_id] = current_state
 
         except Exception as e:
             logger.error(f"Error checking sessions: {e}")
@@ -674,23 +762,8 @@ class BZBot:
     def format_player_name(self, player, api_response):
         """Format player name with profile link and leader prefix"""
         name = player.get('Name', 'Unknown')
-        
-        # Debug logging for player data
-        print(f"\n=== Player Debug Info ===")
-        print(f"Player Name: {name}")
-        print(f"Raw Team Data: {player.get('Team', {})}")
-        
-        # Check if Team.Leader exists and is true
-        team = player.get('Team', {})
-        is_leader = team.get('Leader')
-        print(f"Leader Status: {is_leader}")
-        
-        if is_leader is True:
-            prefix = "C: "
-            print(f"Adding commander prefix for {name}")
-        else:
-            prefix = ""
-            print(f"No commander prefix for {name}")
+        is_leader = player.get('Team', {}).get('Leader', False)
+        prefix = "C: " if is_leader else ""  # Add "C: " prefix for team leaders
         
         # Get Steam or GOG profile link
         player_ids = player.get('IDs', {})
@@ -704,9 +777,7 @@ class BZBot:
                 if steam_info:
                     profile_url = steam_info.get('ProfileUrl')
                     if profile_url:
-                        final_name = f"{prefix}[{name}]({profile_url})"
-                        print(f"Final name (with Steam): {final_name}")
-                        return final_name
+                        return f"{prefix}[{name}]({profile_url})"
         
         # Check for GOG ID
         gog_data = player_ids.get('Gog', {})
@@ -717,14 +788,10 @@ class BZBot:
                 if gog_info:
                     profile_url = gog_info.get('ProfileUrl')
                     if profile_url:
-                        final_name = f"{prefix}[{name}]({profile_url})"
-                        print(f"Final name (with GOG): {final_name}")
-                        return final_name
+                        return f"{prefix}[{name}]({profile_url})"
         
         # Return plain name if no profile link found
-        final_name = f"{prefix}{name}"
-        print(f"Final name (no profile): {final_name}")
-        return final_name
+        return f"{prefix}{name}"
 
 async def main():
     bot = BZBot()
