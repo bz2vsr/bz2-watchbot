@@ -35,7 +35,7 @@ class BZBot:
         self.channel = None
         self.messages = {}
         self.active_sessions = {}
-        self.player_counts = {}
+        self.player_counts = {}  # Track previous player counts
         self.last_api_responses = {}  # Track last known API responses
         self.last_known_states = {}   # Add tracking for last known complete session states
         self.last_known_mods = {}     # Add tracking for last known mods data
@@ -551,70 +551,71 @@ class BZBot:
         try:
             api_response = await self.fetch_api_data()
             if not api_response:
-                logger.error("No API response received")
                 return
-            
-            sessions = api_response.get('Sessions', [])
-            mods = api_response.get('Mods', {})
-            
-            # Track new sessions
-            new_sessions = []
-            
-            # Create new dictionary for current state
-            current_sessions = {}
-            
-            # Get all current session IDs
-            current_session_ids = {s['ID'] for s in sessions}
-            
-            # First handle any ended sessions
-            for session_id in set(self.active_sessions.keys()):
-                if session_id not in current_session_ids:
-                    # Use last known state for ended session
-                    last_state = self.last_known_states.get(session_id, {})
-                    last_api = self.last_api_responses.get(session_id, {})
-                    last_mods = self.last_known_mods.get(session_id, {})
-                    if last_state and last_api:
-                        await self.mark_session_ended(session_id, last_state, last_mods or mods, last_api)
-            
-            # Then process active sessions
-            for session in sessions:
-                session_id = session['ID']
-                
-                # Only process sessions with monitored players
-                if not await self.has_monitored_player(session):
-                    # If we were tracking this session but monitored players left, mark it as ended
-                    if session_id in self.active_sessions:
-                        last_state = self.last_known_states.get(session_id, {})
-                        last_api = self.last_api_responses.get(session_id, {})
-                        last_mods = self.last_known_mods.get(session_id, {})
-                        if last_state and last_api:
-                            await self.mark_session_ended(session_id, last_state, last_mods or mods, last_api)
+
+            for session in api_response.get('Sessions', []):
+                session_id = session.get('ID')
+                session_name = session.get('Name', 'Unknown')
+                if not session_id:
                     continue
+
+                # Get current and max player counts
+                current_players = session.get('PlayerCount', {}).get('Player', 0)
+                max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
                 
-                is_new = session_id not in self.active_sessions
-                if is_new:
-                    new_sessions.append(session)
+                print(f"\n=== Player Count Debug ===")
+                print(f"Game Name: {session_name}")
+                print(f"Session ID: {session_id}")
+                print(f"Current Players: {current_players}")
+                print(f"Max Players: {max_players}")
+                print(f"Previous Count: {self.player_counts.get(session_id, 0)}")
                 
-                # Store current state, API response, and mod:
-                current_sessions[session_id] = session
-                self.last_api_responses[session_id] = api_response
-                self.last_known_states[session_id] = session
-                self.last_known_mods[session_id] = mods
-                
-                # Compare with previous state before updating
-                prev_session = self.active_sessions.get(session_id, {})
-                
-                # Send or update Discord notification
-                await self.send_discord_notification(
-                    session, 
-                    mods, 
-                    is_new=is_new,
-                    new_session_count=len(new_sessions),
-                    api_response=api_response
-                )
-            
-            # After processing all sessions, update active_sessions
-            self.active_sessions = current_sessions
+                # Check if this is a new session or player count has changed
+                if session_id in self.active_sessions:
+                    previous_count = self.player_counts.get(session_id, 0)
+                    
+                    if current_players != previous_count:
+                        print(f"[{session_name}] Player count changed from {previous_count} to {current_players}")
+                        
+                        # Get list of current and previous players
+                        current_players_list = {p.get('Name') for p in session.get('Players', [])}
+                        previous_players_list = {p.get('Name') for p in self.active_sessions[session_id].get('Players', [])}
+                        
+                        print(f"[{session_name}] Current players: {current_players_list}")
+                        print(f"[{session_name}] Previous players: {previous_players_list}")
+                        
+                        # Determine who joined or left
+                        if current_players > previous_count:
+                            joined_players = current_players_list - previous_players_list
+                            player_name = next(iter(joined_players)) if joined_players else "Unknown"
+                            message = f"{current_players}/{max_players} ({player_name} joined) @everyone"
+                            print(f"[{session_name}] Join detected: {message}")
+                        else:
+                            left_players = previous_players_list - current_players_list
+                            player_name = next(iter(left_players)) if left_players else "Unknown"
+                            message = f"{current_players}/{max_players} ({player_name} left) @everyone"
+                            print(f"[{session_name}] Leave detected: {message}")
+                        
+                        # Post the notification
+                        try:
+                            webhook_url = config.DISCORD_WEBHOOK_URL
+                            webhook_data = {
+                                "content": message
+                            }
+                            
+                            async with self.session.post(webhook_url, json=webhook_data) as response:
+                                if response.status == 204:
+                                    print(f"[{session_name}] Successfully sent player count notification")
+                                else:
+                                    print(f"[{session_name}] Failed to send notification: {response.status}")
+                        except Exception as e:
+                            print(f"[{session_name}] Error sending notification: {e}")
+
+                # Update tracking
+                self.active_sessions[session_id] = session
+                self.player_counts[session_id] = current_players
+
+            # ... rest of existing check_sessions code ...
 
         except Exception as e:
             logger.error(f"Error checking sessions: {e}")
