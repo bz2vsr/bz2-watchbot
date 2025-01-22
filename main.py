@@ -29,14 +29,16 @@ class BZBot:
         self.message_counter = 0  # Add a counter for generating message IDs
         self.is_running = True
         self.sessions = {}
-        self.mods = {}
+        self.mods = {}  # Store current mods data
         self.last_update = None
         self.update_lock = asyncio.Lock()
         self.channel = None
         self.messages = {}
         self.active_sessions = {}
-        self.player_counts = {}  # Add this to track player counts
-        self.last_api_responses = {}  # Add tracking for last known API responses
+        self.player_counts = {}
+        self.last_api_responses = {}  # Track last known API responses
+        self.last_known_states = {}   # Add tracking for last known complete session states
+        self.last_known_mods = {}     # Add tracking for last known mods data
         
         # Load VSR map list data
         try:
@@ -524,9 +526,12 @@ class BZBot:
             # First handle any ended sessions
             for session_id in set(self.active_sessions.keys()):
                 if session_id not in current_session_ids:
-                    # Session has ended
-                    last_session = self.active_sessions[session_id]
-                    await self.mark_session_ended(session_id, last_session, mods, api_response)
+                    # Use last known state for ended session
+                    last_state = self.last_known_states.get(session_id, {})
+                    last_api = self.last_api_responses.get(session_id, {})
+                    last_mods = self.last_known_mods.get(session_id, {})
+                    if last_state and last_api:
+                        await self.mark_session_ended(session_id, last_state, last_mods or mods, last_api)
             
             # Then process active sessions
             for session in sessions:
@@ -536,16 +541,22 @@ class BZBot:
                 if not await self.has_monitored_player(session):
                     # If we were tracking this session but monitored players left, mark it as ended
                     if session_id in self.active_sessions:
-                        await self.mark_session_ended(session_id, session, mods, api_response)
+                        last_state = self.last_known_states.get(session_id, {})
+                        last_api = self.last_api_responses.get(session_id, {})
+                        last_mods = self.last_known_mods.get(session_id, {})
+                        if last_state and last_api:
+                            await self.mark_session_ended(session_id, last_state, last_mods or mods, last_api)
                     continue
                 
                 is_new = session_id not in self.active_sessions
                 if is_new:
                     new_sessions.append(session)
                 
-                # Store in current sessions
+                # Store current state, API response, and mods
                 current_sessions[session_id] = session
                 self.last_api_responses[session_id] = api_response
+                self.last_known_states[session_id] = session
+                self.last_known_mods[session_id] = mods
                 
                 # Compare with previous state before updating
                 prev_session = self.active_sessions.get(session_id, {})
@@ -613,6 +624,8 @@ class BZBot:
             self.message_ids.pop(session_id, None)
             self.player_counts.pop(session_id, None)
             self.last_api_responses.pop(session_id, None)
+            self.last_known_states.pop(session_id, None)
+            self.last_known_mods.pop(session_id, None)
 
 async def main():
     bot = BZBot()
