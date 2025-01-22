@@ -518,7 +518,17 @@ class BZBot:
             # Create new dictionary for current state
             current_sessions = {}
             
-            # Update active sessions and store API response
+            # Get all current session IDs
+            current_session_ids = {s['ID'] for s in sessions}
+            
+            # First handle any ended sessions
+            for session_id in set(self.active_sessions.keys()):
+                if session_id not in current_session_ids:
+                    # Session has ended
+                    last_session = self.active_sessions[session_id]
+                    await self.mark_session_ended(session_id, last_session, mods, api_response)
+            
+            # Then process active sessions
             for session in sessions:
                 session_id = session['ID']
                 
@@ -553,7 +563,7 @@ class BZBot:
             self.active_sessions = current_sessions
 
         except Exception as e:
-            print(f"Error checking sessions: {e}")
+            logger.error(f"Error checking sessions: {e}")
 
     async def run(self):
         await self.initialize()
@@ -573,6 +583,36 @@ class BZBot:
             logger.info("Closing session...")
             await self.close()
             logger.info("Bot stopped")
+
+    async def mark_session_ended(self, session_id, session, mods, api_response):
+        """Mark a session as ended and update its Discord message"""
+        if session_id in self.message_ids:
+            message_id = self.message_ids[session_id]
+            
+            # Format embed with last known data
+            last_embed = await self.format_session_embed(session, mods, api_response)
+            
+            # Modify the embed to show ended state
+            last_embed["title"] = "❌  Session Ended"
+            last_embed.pop("url", None)  # Remove the join URL
+            last_embed["color"] = 15158332  # Discord red color
+            
+            webhook_data = {
+                "embeds": [last_embed]
+            }
+            
+            update_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{message_id}"
+            async with self.session.patch(update_url, json=webhook_data) as response:
+                if response.status in [200, 204]:
+                    logger.info(f"Updated message for ended session: {session_id}")
+                else:
+                    logger.error(f"Failed to update ended session message: {response.status}")
+            
+            # Clean up tracking dictionaries
+            self.active_sessions.pop(session_id, None)
+            self.message_ids.pop(session_id, None)
+            self.player_counts.pop(session_id, None)
+            self.last_api_responses.pop(session_id, None)
 
 async def main():
     bot = BZBot()
