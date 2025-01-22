@@ -192,8 +192,12 @@ class BZBot:
                     {"name": "\u200b", "value": "\u200b", "inline": True},
                 ])
 
-            # Create team listings
+            # Process players and teams
             teams = {}
+            profile_names = {}
+            profile_urls = {}
+
+            # First pass - collect profile data
             for player in session.get('Players', []):
                 # Extract team ID from the team object
                 team_data = player.get('Team', {})
@@ -209,21 +213,53 @@ class BZBot:
                 steam_data = player_ids.get('Steam', {})
                 if steam_data and steam_data.get('ID'):
                     profile_key = f"S{steam_data['ID']}"
+                    # Get Steam profile URL from API response
+                    if api_response:
+                        steam_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Steam', {}).get(steam_data['ID'], {})
+                        profile_urls[profile_key] = steam_info.get('ProfileUrl')
+                        profile_names[profile_key] = steam_info.get('Nickname', player.get('Name', 'Unknown'))
                 else:
                     # Try GOG ID if Steam ID not found
                     gog_data = player_ids.get('Gog', {})
-                    profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
+                    if gog_data and gog_data.get('ID'):
+                        profile_key = f"G{gog_data['ID']}"
+                        # Get GOG profile URL from API response
+                        if api_response:
+                            gog_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Gog', {}).get(gog_data['ID'], {})
+                            profile_urls[profile_key] = gog_info.get('ProfileUrl')
+                            profile_names[profile_key] = gog_info.get('Username', player.get('Name', 'Unknown'))
+                    else:
+                        profile_key = None
                 
                 # Get player name from profile data, fallback to session name if not found
                 player_name = profile_names.get(profile_key, player.get('Name', 'Unknown'))
                 
+                # Debug logging for team leader status
+                print(f"\n=== Player Team Debug ===")
+                print(f"Player: {player_name}")
+                print(f"Team Data: {team_data}")
+                print(f"Leader Status: {team_data.get('Leader')}")
+                print(f"Profile Key: {profile_key}")
+                print(f"Profile URL: {profile_urls.get(profile_key)}")
+                
+                # Add commander prefix if player is team leader
+                if team_data.get('Leader') is True:
+                    prefix = "C: "
+                    print(f"Adding commander prefix for {player_name}")
+                else:
+                    prefix = ""
+                
+                # Create clickable player name if we have their profile
+                if profile_key and profile_urls.get(profile_key):
+                    player_name = f"{prefix}[{player_name}]({profile_urls[profile_key]})"
+                    print(f"Added profile link: {player_name}")
+                else:
+                    player_name = f"{prefix}{player_name}"
+                    print(f"No profile link available: {player_name}")
+                
                 kills = player.get('Stats', {}).get('Kills', 0)
                 deaths = player.get('Stats', {}).get('Deaths', 0)
                 score = player.get('Stats', {}).get('Score', 0)
-                
-                # Create clickable player name if we have their profile
-                if profile_key and profile_key in profile_urls:
-                    player_name = f"[{player_name}]({profile_urls[profile_key]})"
                 
                 player_with_stats = f"{player_name} ({kills}/{deaths}/{score})"
                 teams[team_id].append(player_with_stats)
@@ -552,7 +588,7 @@ class BZBot:
                 if is_new:
                     new_sessions.append(session)
                 
-                # Store current state, API response, and mods
+                # Store current state, API response, and mod:
                 current_sessions[session_id] = session
                 self.last_api_responses[session_id] = api_response
                 self.last_known_states[session_id] = session
@@ -626,6 +662,61 @@ class BZBot:
             self.last_api_responses.pop(session_id, None)
             self.last_known_states.pop(session_id, None)
             self.last_known_mods.pop(session_id, None)
+
+    def format_player_name(self, player, api_response):
+        """Format player name with profile link and leader prefix"""
+        name = player.get('Name', 'Unknown')
+        
+        # Debug logging for player data
+        print(f"\n=== Player Debug Info ===")
+        print(f"Player Name: {name}")
+        print(f"Raw Team Data: {player.get('Team', {})}")
+        
+        # Check if Team.Leader exists and is true
+        team = player.get('Team', {})
+        is_leader = team.get('Leader')
+        print(f"Leader Status: {is_leader}")
+        
+        if is_leader is True:
+            prefix = "C: "
+            print(f"Adding commander prefix for {name}")
+        else:
+            prefix = ""
+            print(f"No commander prefix for {name}")
+        
+        # Get Steam or GOG profile link
+        player_ids = player.get('IDs', {})
+        
+        # Check for Steam ID
+        steam_data = player_ids.get('Steam', {})
+        if steam_data:
+            steam_id = steam_data.get('ID')
+            if steam_id and api_response:
+                steam_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Steam', {}).get(steam_id, {})
+                if steam_info:
+                    profile_url = steam_info.get('ProfileUrl')
+                    if profile_url:
+                        final_name = f"{prefix}[{name}]({profile_url})"
+                        print(f"Final name (with Steam): {final_name}")
+                        return final_name
+        
+        # Check for GOG ID
+        gog_data = player_ids.get('Gog', {})
+        if gog_data:
+            gog_id = gog_data.get('ID')
+            if gog_id and api_response:
+                gog_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Gog', {}).get(gog_id, {})
+                if gog_info:
+                    profile_url = gog_info.get('ProfileUrl')
+                    if profile_url:
+                        final_name = f"{prefix}[{name}]({profile_url})"
+                        print(f"Final name (with GOG): {final_name}")
+                        return final_name
+        
+        # Return plain name if no profile link found
+        final_name = f"{prefix}{name}"
+        print(f"Final name (no profile): {final_name}")
+        return final_name
 
 async def main():
     bot = BZBot()
