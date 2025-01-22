@@ -147,10 +147,18 @@ class BZBot:
             # Get NAT Type from session
             nat_type = session.get('Address', {}).get('NAT_TYPE', 'Unknown')
             
-            # Get mod info
+            # Get game version and mod info
+            game_version = session.get('Game', {}).get('Version', 'Unknown')
             mod_id = session.get('Game', {}).get('Mod', '0')
             mod_name = mods_mapping.get(mod_id, {}).get('Name', 'Unknown')
-            
+            mod_url = mods_mapping.get(mod_id, {}).get('Url')
+
+            # Format mod field with mod link first, then version on next line
+            if mod_url:
+                mod_field = f"[{mod_name}]({mod_url})\n{game_version}"
+            else:
+                mod_field = f"{mod_name}\n{game_version}"
+
             # Format NAT ID for join URL
             nat_id = session.get('Address', {}).get('NAT', '')
             formatted_nat = nat_id.replace('@', 'A').replace('-', '0').replace('_', 'L')
@@ -343,9 +351,8 @@ class BZBot:
             ])
 
             # Add Mod after Map details
-            mod_value = f"[{mod_name}]({mods_mapping.get(mod_id, {}).get('Url', '')})" if mods_mapping.get(mod_id, {}).get('Url', '') else mod_name
             embed["fields"].extend([
-                {"name": "\u200b", "value": mod_value, "inline": False}
+                {"name": "", "value": mod_field, "inline": True}
             ])
 
             # Add thumbnail if we have a map image
