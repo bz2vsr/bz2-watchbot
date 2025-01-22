@@ -563,38 +563,26 @@ class BZBot:
                 current_players = session.get('PlayerCount', {}).get('Player', 0)
                 max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
                 
-                print(f"\n=== Player Count Debug ===")
-                print(f"Game Name: {session_name}")
-                print(f"Session ID: {session_id}")
-                print(f"Current Players: {current_players}")
-                print(f"Max Players: {max_players}")
-                print(f"Previous Count: {self.player_counts.get(session_id, 0)}")
-                
                 # Check if this is a new session or player count has changed
                 if session_id in self.active_sessions:
                     previous_count = self.player_counts.get(session_id, 0)
                     
                     if current_players != previous_count:
-                        print(f"[{session_name}] Player count changed from {previous_count} to {current_players}")
-                        
                         # Get list of current and previous players
                         current_players_list = {p.get('Name') for p in session.get('Players', [])}
                         previous_players_list = {p.get('Name') for p in self.active_sessions[session_id].get('Players', [])}
-                        
-                        print(f"[{session_name}] Current players: {current_players_list}")
-                        print(f"[{session_name}] Previous players: {previous_players_list}")
                         
                         # Determine who joined or left
                         if current_players > previous_count:
                             joined_players = current_players_list - previous_players_list
                             player_name = next(iter(joined_players)) if joined_players else "Unknown"
                             message = f"{current_players}/{max_players} ({player_name} joined) @everyone"
-                            print(f"[{session_name}] Join detected: {message}")
+                            print(f"[{session_name}] {player_name} joined ({current_players}/{max_players})")
                         else:
                             left_players = previous_players_list - current_players_list
                             player_name = next(iter(left_players)) if left_players else "Unknown"
                             message = f"{current_players}/{max_players} ({player_name} left) @everyone"
-                            print(f"[{session_name}] Leave detected: {message}")
+                            print(f"[{session_name}] {player_name} left ({current_players}/{max_players})")
                         
                         # Post the notification
                         try:
@@ -604,9 +592,7 @@ class BZBot:
                             }
                             
                             async with self.session.post(webhook_url, json=webhook_data) as response:
-                                if response.status == 204:
-                                    print(f"[{session_name}] Successfully sent player count notification")
-                                else:
+                                if response.status != 204:
                                     print(f"[{session_name}] Failed to send notification: {response.status}")
                         except Exception as e:
                             print(f"[{session_name}] Error sending notification: {e}")
