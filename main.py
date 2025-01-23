@@ -136,22 +136,16 @@ class BZBot:
                 player_list += f"• {player.get('Name', 'Unknown')}\n"
             if not player_list:
                 player_list = "No players"
-
-            # Debug logging for mod data
-            game_data = session.get('Game', {})
-            mod_id = str(game_data.get('Mod', ''))
-            logger.info(f"Game mod ID: {mod_id}")
             
             # Get mod info from top-level Mods object
             mod_field = "Unknown"
+            game_data = session.get('Game', {})
+            mod_id = str(game_data.get('Mod', ''))
             if mods_mapping and mod_id in mods_mapping:
                 mod_data = mods_mapping[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
-                logger.info(f"Found mod: {mod_name}")
-            else:
-                logger.error(f"Mod ID {mod_id} not found in mods mapping")
 
             # Create embed
             embed = {
