@@ -1,28 +1,76 @@
 import asyncio
 import json
 import logging
+import logging.handlers
 from datetime import datetime
 import aiohttp
 import config
 import sys
+import time
+import os
 
 # Set event loop policy for Windows
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Set up logging with custom format
-class CustomFormatter(logging.Formatter):
-    def format(self, record):
-        if record.levelno >= logging.ERROR:
-            return f"[ERROR] {record.getMessage()}"
-        return record.getMessage()
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
 
-# Configure logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-handler.setFormatter(CustomFormatter())
-logger.handlers = [handler]  # Replace any existing handlers
+class CustomFormatter(logging.Formatter):
+    """Custom formatter that adds colors and simplified error format"""
+    grey = "\x1b[38;21m"
+    blue = "\x1b[38;5;39m"
+    yellow = "\x1b[38;5;226m"
+    red = "\x1b[38;5;196m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+
+    # Format strings for different log levels
+    FORMATS = {
+        logging.DEBUG: f"{grey}%(message)s{reset}",
+        logging.INFO: f"{blue}%(message)s{reset}",
+        logging.WARNING: f"{yellow}WARNING: %(message)s{reset}",
+        logging.ERROR: f"{red}ERROR: %(message)s{reset}",
+        logging.CRITICAL: f"{bold_red}CRITICAL: %(message)s{reset}",
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+def setup_logging():
+    """Configure logging with both console and file output"""
+    logger = logging.getLogger('bzbot')  # Give our logger a specific name
+    logger.setLevel(logging.INFO)  # Set base logging level
+    
+    # Remove any existing handlers
+    logger.handlers = []
+    
+    # Console Handler - Pretty formatting with colors
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(CustomFormatter())
+    logger.addHandler(console_handler)
+    
+    # File Handler - Detailed formatting with rotation
+    file_handler = logging.handlers.RotatingFileHandler(
+        'logs/bzbot.log',  # Store logs in logs directory
+        maxBytes=1024 * 1024,  # 1MB per file
+        backupCount=5,  # Keep 5 backup files
+        encoding='utf-8'
+    )
+    # Detailed format for file logs
+    file_format = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(file_format)
+    logger.addHandler(file_handler)
+    
+    return logger
+
+# Initialize logger globally
+logger = setup_logging()
 
 class BZBot:
     def __init__(self):
@@ -42,13 +90,14 @@ class BZBot:
         self.last_api_responses = {}
         self.last_known_states = {}
         self.last_known_mods = {}
+        self.start_time = time.time()
         
         # Load VSR map list data
         try:
             with open('vsrmaplist.json', 'r') as f:
                 self.vsr_maps = json.load(f)
         except Exception as e:
-            print(f"Warning: Could not load vsrmaplist.json: {e}")
+            logger.error(f"Warning: Could not load vsrmaplist.json: {e}")
             self.vsr_maps = []
 
     async def initialize(self):
@@ -59,14 +108,23 @@ class BZBot:
             await self.session.close()
 
     async def fetch_api_data(self):
-        logger.info(f"Fetching data from API: {config.API_URL}")
+        """Fetch data from the API with better error handling"""
         try:
+            logger.info(f"Fetching data from API: {config.API_URL}")
             async with self.session.get(config.API_URL) as response:
-                response.raise_for_status()
-                logger.info("API request successful")
-                return await response.json()
+                if response.status == 200:
+                    data = await response.json()
+                    logger.debug("API request successful")
+                    return data
+                else:
+                    logger.error(f"API request failed with status {response.status}")
+                    logger.debug(f"Response: {await response.text()}")
+                    return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error during API request: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to fetch API data: {e}")
+            logger.error(f"Unexpected error during API request: {str(e)}")
             return None
 
     async def format_session_embed(self, session, mods_mapping, api_response=None):
@@ -554,6 +612,7 @@ class BZBot:
         try:
             api_response = await self.fetch_api_data()
             if not api_response:
+                self.logger.warning("No API response, skipping session check")
                 return
 
             # Update mods mapping from API response
@@ -708,7 +767,7 @@ class BZBot:
                 self.last_known_states[session_id] = current_state
 
         except Exception as e:
-            logger.error(f"Error checking sessions: {e}")
+            logger.error(f"Error checking sessions: {e}", exc_info=True)
 
     async def run(self):
         await self.initialize()
@@ -794,6 +853,15 @@ class BZBot:
         
         # Return plain name if no profile link found
         return f"{prefix}{name}"
+
+    async def health_check(self):
+        """Return basic health metrics"""
+        return {
+            "status": "healthy",
+            "uptime": time.time() - self.start_time,
+            "active_sessions": len(self.active_sessions),
+            "last_api_response": self.last_update.isoformat() if self.last_update else None
+        }
 
 async def main():
     bot = BZBot()

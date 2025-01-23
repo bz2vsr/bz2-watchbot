@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: bzbot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: CHECK_INTERVAL
+        value: 30
+      - key: MONITORED_STEAM_IDS
+        sync: false 
