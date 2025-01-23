@@ -443,3 +443,13 @@ AttributeError: 'BZBot' object has no attribute 'logger'
 2025-01-22 21:49:44 - INFO - Fetching data from API: https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander
 2025-01-22 21:50:00 - INFO - Fetching data from API: https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander
 2025-01-22 21:50:15 - INFO - Fetching data from API: https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander
+2025-01-22 23:49:53 - INFO - Bot started - checking every 15 seconds
+2025-01-22 23:49:53 - INFO - Press Ctrl+C to stop
+2025-01-22 23:49:53 - INFO - Fetching data from API: https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander
+2025-01-22 23:49:53 - INFO - Sending POST request to webhook
+2025-01-22 23:49:54 - INFO - Webhook request successful: 204
+2025-01-22 23:49:54 - ERROR - Error sending webhook: 204, message='Attempt to decode JSON with unexpected mimetype: text/html; charset=utf-8', url='https://discord.com/api/webhooks/1331391499430264922/mnxnqIAAyYqxwhM15AIUL_wbVw7xmDfzQcRCHSjPv9rgJIYRXJ37qgrOJRgEbf6An9hc'
+2025-01-22 23:49:54 - INFO - Sending POST request to webhook
+2025-01-22 23:49:54 - INFO - Webhook request successful: 204
+2025-01-22 23:49:54 - ERROR - Error sending webhook: 204, message='Attempt to decode JSON with unexpected mimetype: text/html; charset=utf-8', url='https://discord.com/api/webhooks/1331391499430264922/mnxnqIAAyYqxwhM15AIUL_wbVw7xmDfzQcRCHSjPv9rgJIYRXJ37qgrOJRgEbf6An9hc'
+2025-01-22 23:49:54 - ERROR - Failed to create embed for new session

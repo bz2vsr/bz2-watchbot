@@ -745,21 +745,13 @@ class BZBot:
                                 gog_id = profile_key[1:]  # Remove 'G' prefix
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
-                    webhook_data = {
-                        "content": f"🆕 Game Up (Host: {host_name}) @everyone",
-                        "embeds": [embed]
-                    }
-                    
-                    try:
-                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
-                        async with self.session.post(webhook_url, json=webhook_data) as response:
-                            if response.status == 200:
-                                response_data = await response.json()
-                                self.message_ids[session_id] = response_data['id']
-                            else:
-                                print(f"Error creating embed: {response.status}")
-                    except Exception as e:
-                        print(f"Error creating embed: {e}")
+                    # Send notification and embed
+                    await self.send_notification(f"🆕 Game Up (Host: {host_name}) @everyone")
+                    message_id = await self.create_embed(session, embed)
+                    if message_id:
+                        self.message_ids[session_id] = message_id
+                    else:
+                        logger.error("Failed to create embed for new session")
 
                 # Update tracking
                 self.active_sessions[session_id] = session
@@ -862,6 +854,56 @@ class BZBot:
             "active_sessions": len(self.active_sessions),
             "last_api_response": self.last_update.isoformat() if self.last_update else None
         }
+
+    async def send_webhook(self, webhook_data, message_id=None):
+        """Centralized webhook sending with better error handling"""
+        try:
+            webhook_url = config.DISCORD_WEBHOOK_URL
+            if message_id:
+                webhook_url = f"{webhook_url}/messages/{message_id}"
+            
+            method = "PATCH" if message_id else "POST"
+            logger.info(f"Sending {method} request to webhook")
+            
+            async with self.session.request(method, webhook_url, json=webhook_data) as response:
+                if response.status in [200, 204]:
+                    logger.info(f"Webhook request successful: {response.status}")
+                    if method == "POST":
+                        return await response.json()
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Webhook request failed: {response.status}")
+                    logger.error(f"Error details: {error_text}")
+                    logger.error(f"Webhook URL: {webhook_url}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error sending webhook: {str(e)}")
+            return None
+
+    async def create_embed(self, session, embed):
+        """Create a new embed message"""
+        webhook_data = {
+            "embeds": [embed]
+        }
+        response = await self.send_webhook(webhook_data)
+        if response:
+            return response.get('id')
+        return None
+
+    async def update_embed(self, message_id, embed):
+        """Update an existing embed message"""
+        webhook_data = {
+            "embeds": [embed]
+        }
+        return await self.send_webhook(webhook_data, message_id)
+
+    async def send_notification(self, content):
+        """Send a text notification"""
+        webhook_data = {
+            "content": content
+        }
+        return await self.send_webhook(webhook_data)
 
 async def main():
     bot = BZBot()
