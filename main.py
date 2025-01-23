@@ -589,7 +589,9 @@ class BZBot:
                                 if response.status == 200:
                                     old_message = await response.json()
                                     old_embed = old_message['embeds'][0]
-                                    old_embed['title'] = f"{old_embed['title']} (Game Ended)"
+                                    old_embed['title'] = "❌  Game Ended"
+                                    old_embed.pop('url', None)  # Remove the join URL
+                                    old_embed['color'] = 15105570  # Discord orange color
                                     
                                     # Update the message
                                     patch_data = {"embeds": [old_embed]}
