@@ -3,4 +3,4 @@
 /bz2vsr.github.io
 /__pycache__
 /logs
-/logs
+*.log
