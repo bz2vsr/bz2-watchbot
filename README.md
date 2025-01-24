@@ -4,7 +4,7 @@ A Web Service that monitors multiplayer game data from [Battlezone II: Combat Co
 
 Relies on the MultiplayerSessionList API by Nielk1 ([Github](https://github.com/Nielk1) | [Twitter](https://x.com/nielk1)).
 
-![image](https://github.com/user-attachments/assets/fc80b024-df54-4160-9bd4-2f2d12aec32e)
+![image](https://github.com/user-attachments/assets/29bbdbdc-c271-417f-a575-76ae5a03d94a)
 
 ## Technical Details
 
