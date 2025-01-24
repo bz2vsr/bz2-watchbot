@@ -617,21 +617,20 @@ class BZBot:
                 logger.error(f"Failed to send player count notification: {response.status}")
 
     async def has_monitored_player(self, session):
-        """Check if session has any monitored players"""
+        if session.get('Level', {}).get('GameMode', {}).get('ID') != "STRAT":
+            return False
+        
         for player in session.get('Players', []):
             player_ids = player.get('IDs', {})
             
-            # Check Steam ID
             steam_data = player_ids.get('Steam', {})
             if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
                 return True
             
-            # Check GOG ID
             gog_data = player_ids.get('Gog', {})
             if gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
                 return True
-                
-            # Check player name (for non-numeric IDs like "herpmcderperson" or "bz2Cyber")
+            
             if player.get('Name') in config.MONITORED_STEAM_IDS:
                 return True
         return False
