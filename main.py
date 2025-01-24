@@ -846,6 +846,9 @@ class BZBot:
                 self.player_counts[session_id] = current_players
                 self.last_known_states[session_id] = current_state
 
+                # Store the API response for this session
+                self.last_api_responses[session_id] = api_response
+
         except Exception as e:
             logger.error(f"Error checking sessions: {e}")
 
@@ -893,6 +896,88 @@ class BZBot:
             
             # Format embed with last known data
             last_embed = await self.format_session_embed(session, mods, api_response)
+            
+            # Process players and teams with preserved links
+            teams = {}
+            for player in session.get('Players', []):
+                # Extract team ID from the team object
+                team_data = player.get('Team', {})
+                # Try to get team ID from either direct Team ID or SubTeam ID
+                team_id = str(team_data.get('ID', team_data.get('SubTeam', {}).get('ID', -1)))
+                
+                if team_id not in teams:
+                    teams[team_id] = []
+                
+                player_ids = player.get('IDs', {})
+                
+                # Try Steam ID first
+                steam_data = player_ids.get('Steam', {})
+                if steam_data and steam_data.get('ID'):
+                    profile_key = f"S{steam_data['ID']}"
+                else:
+                    # Try GOG ID if Steam ID not found
+                    gog_data = player_ids.get('Gog', {})
+                    profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
+                
+                # Get player name from profile data, fallback to session name if not found
+                player_name = player.get('Name', 'Unknown')
+                profile_url = None
+                
+                # Try to get profile URL from current API response first
+                if profile_key and api_response and 'DataCache' in api_response:
+                    player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
+                    if profile_key.startswith('S'):
+                        steam_id = profile_key[1:]  # Remove 'S' prefix
+                        steam_info = player_ids.get('Steam', {}).get(steam_id, {})
+                        profile_url = steam_info.get('ProfileUrl')
+                    elif profile_key.startswith('G'):
+                        gog_id = profile_key[1:]  # Remove 'G' prefix
+                        gog_info = player_ids.get('Gog', {}).get(gog_id, {})
+                        profile_url = gog_info.get('ProfileUrl')
+                
+                # If no profile URL in current response, try last known response
+                if not profile_url and session_id in self.last_api_responses:
+                    last_response = self.last_api_responses[session_id]
+                    if 'DataCache' in last_response:
+                        player_ids = last_response['DataCache'].get('Players', {}).get('IDs', {})
+                        if profile_key and profile_key.startswith('S'):
+                            steam_id = profile_key[1:]
+                            steam_info = player_ids.get('Steam', {}).get(steam_id, {})
+                            profile_url = steam_info.get('ProfileUrl')
+                        elif profile_key and profile_key.startswith('G'):
+                            gog_id = profile_key[1:]
+                            gog_info = player_ids.get('Gog', {}).get(gog_id, {})
+                            profile_url = gog_info.get('ProfileUrl')
+                
+                # Add commander prefix if player is team leader
+                prefix = "C: " if team_data.get('Leader') is True else ""
+                
+                # Format player name with link if available
+                if profile_url:
+                    player_name = f"{prefix}[{player_name}]({profile_url})"
+                else:
+                    player_name = f"{prefix}{player_name}"
+                
+                # Add stats
+                kills = player.get('Stats', {}).get('Kills', 0)
+                deaths = player.get('Stats', {}).get('Deaths', 0)
+                score = player.get('Stats', {}).get('Score', 0)
+                player_with_stats = f"{player_name} ({kills}/{deaths}/{score})"
+                teams[team_id].append(player_with_stats)
+            
+            # Update team fields in the embed
+            for field in last_embed["fields"]:
+                if field.get("name") == "👥  **TEAM 1**":
+                    team1_players = teams.get('1', [])
+                    field["value"] = "\n".join(team1_players) if team1_players else "*Empty*"
+                elif field.get("name") == "👥  **TEAM 2**":
+                    # Check if it's MPI mode
+                    is_mpi = session.get('Level', {}).get('GameMode', {}).get('ID', 'Unknown') == "MPI"
+                    if is_mpi:
+                        field["value"] = "**Computer**"
+                    else:
+                        team2_players = teams.get('2', [])
+                        field["value"] = "\n".join(team2_players) if team2_players else "*Empty*"
             
             # Modify the embed to show ended state
             last_embed["title"] = "❌  Session Ended"
