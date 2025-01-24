@@ -9,11 +9,9 @@ import sys
 import time
 import os
 
-# Set event loop policy for Windows
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-# Create logs directory if it doesn't exist
 os.makedirs('logs', exist_ok=True)
 
 class CustomFormatter(logging.Formatter):
@@ -25,7 +23,6 @@ class CustomFormatter(logging.Formatter):
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
 
-    # Format strings for different log levels
     FORMATS = {
         logging.DEBUG: f"{grey}%(message)s{reset}",
         logging.INFO: f"{blue}%(message)s{reset}",
@@ -41,25 +38,22 @@ class CustomFormatter(logging.Formatter):
 
 def setup_logging():
     """Configure logging with both console and file output"""
-    logger = logging.getLogger('bzbot')  # Give our logger a specific name
-    logger.setLevel(logging.INFO)  # Set base logging level
+    logger = logging.getLogger('bzbot') 
+    logger.setLevel(logging.INFO) 
     
-    # Remove any existing handlers
     logger.handlers = []
     
-    # Console Handler - Pretty formatting with colors
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(CustomFormatter())
     logger.addHandler(console_handler)
     
-    # File Handler - Detailed formatting with rotation
     file_handler = logging.handlers.RotatingFileHandler(
-        'logs/bzbot.log',  # Store logs in logs directory
+        'logs/bzbot.log',  
         maxBytes=1024 * 1024,  # 1MB per file
-        backupCount=5,  # Keep 5 backup files
+        backupCount=5, 
         encoding='utf-8'
     )
-    # Detailed format for file logs
+
     file_format = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -69,7 +63,6 @@ def setup_logging():
     
     return logger
 
-# Initialize logger globally
 logger = setup_logging()
 
 class BZBot:
@@ -92,7 +85,6 @@ class BZBot:
         self.last_known_mods = {}
         self.start_time = time.time()
         
-        # Load VSR map list data
         try:
             with open('vsrmaplist.json', 'r') as f:
                 self.vsr_maps = json.load(f)
@@ -238,7 +230,7 @@ class BZBot:
                 "footer": {
                     "text": f"GameWatch • Last Updated: {datetime.now().strftime('%I:%M %p')} 🔄"
                 },
-                "color": 3447003  # Blue
+                "color": 3447003  
             }
 
             embed["fields"].extend([
@@ -715,14 +707,13 @@ class BZBot:
                             gog_data = host_ids.get('Gog', {})
                             profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                         
-                        # Get host name from profile data, fallback to session name if not found
                         if api_response and 'DataCache' in api_response:
                             player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
                             if profile_key and profile_key.startswith('S'):
-                                steam_id = profile_key[1:]  # Remove 'S' prefix
+                                steam_id = profile_key[1:]  
                                 host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
                             elif profile_key and profile_key.startswith('G'):
-                                gog_id = profile_key[1:]  # Remove 'G' prefix
+                                gog_id = profile_key[1:]  
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
                     webhook_data = {
