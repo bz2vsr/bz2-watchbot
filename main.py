@@ -645,7 +645,19 @@ class BZBot:
 
             # Update mods mapping from API response
             self.mods = api_response.get('Mods', {})
+            self.last_known_mods = {**self.last_known_mods, **self.mods}  # Store current mods data
+            
+            # Get current session IDs from API response
+            current_session_ids = {session['ID'] for session in api_response.get('Sessions', [])}
+            
+            # Check for ended sessions first
+            for session_id in list(self.active_sessions.keys()):
+                if session_id not in current_session_ids:
+                    logger.info(f"Session {session_id} has ended, marking as ended")
+                    await self.mark_session_ended(session_id, self.active_sessions[session_id], self.mods, api_response)
+                    continue
 
+            # Process active sessions
             for session in api_response.get('Sessions', []):
                 session_id = session.get('ID')
                 session_name = session.get('Name', 'Unknown')
@@ -861,6 +873,24 @@ class BZBot:
         if session_id in self.message_ids:
             message_id = self.message_ids[session_id]
             
+            # Get the last known mod data
+            game_data = session.get('Game', {})
+            mod_id = str(game_data.get('Mod', ''))
+            mod_field = "Unknown"
+            
+            # Try to get mod info from current mods mapping first
+            if mod_id in mods:
+                mod_data = mods[mod_id]
+                mod_name = mod_data.get('Name', 'Unknown')
+                mod_url = mod_data.get('Url', '')
+                mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
+            # Fallback to last known mods if not in current mapping
+            elif mod_id in self.last_known_mods:
+                mod_data = self.last_known_mods[mod_id]
+                mod_name = mod_data.get('Name', 'Unknown')
+                mod_url = mod_data.get('Url', '')
+                mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
+            
             # Format embed with last known data
             last_embed = await self.format_session_embed(session, mods, api_response)
             
@@ -868,6 +898,12 @@ class BZBot:
             last_embed["title"] = "❌  Session Ended"
             last_embed.pop("url", None)  # Remove the join URL
             last_embed["color"] = 15158332  # Discord red color
+            
+            # Ensure mod field stays intact
+            for field in last_embed["fields"]:
+                if field.get("name", "").strip() == "":  # This is our mod field
+                    field["value"] = mod_field
+                    break
             
             webhook_data = {
                 "embeds": [last_embed]
