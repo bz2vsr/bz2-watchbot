@@ -130,14 +130,12 @@ class BZBot:
     async def format_session_embed(self, session, mods_mapping, api_response=None):
         """Creates a Discord embed for a game session"""
         try:
-            # Create player list first
             player_list = ""
             for player in session.get('Players', []):
                 player_list += f"• {player.get('Name', 'Unknown')}\n"
             if not player_list:
                 player_list = "No players"
             
-            # Get mod info from top-level Mods object
             mod_field = "Unknown"
             game_data = session.get('Game', {})
             mod_id = str(game_data.get('Mod', ''))
@@ -147,7 +145,6 @@ class BZBot:
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
 
-            # Create embed
             embed = {
                 "title": "Join Game",
                 "url": f"steam://run/1276390//+connect%20{session.get('Address')}",
@@ -159,13 +156,11 @@ class BZBot:
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
-            # Create profile URL and name mapping from both Steam and GOG
             profile_urls = {}
             profile_names = {}
             if api_response and 'DataCache' in api_response:
                 player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
                 
-                # Get Steam profiles
                 steam_data = player_ids.get('Steam', {})
                 for steam_id, profile_data in steam_data.items():
                     profile_url = profile_data.get('ProfileUrl')
@@ -174,7 +169,6 @@ class BZBot:
                         profile_urls[f"S{steam_id}"] = profile_url
                         profile_names[f"S{steam_id}"] = nickname
                 
-                # Get GOG profiles
                 gog_data = player_ids.get('Gog', {})
                 for gog_id, profile_data in gog_data.items():
                     profile_url = profile_data.get('ProfileUrl')
@@ -183,75 +177,60 @@ class BZBot:
                         profile_urls[f"G{gog_id}"] = profile_url
                         profile_names[f"G{gog_id}"] = username
 
-            # Get host info (first player in the array)
             host_name = "Unknown"
             if session.get('Players') and len(session['Players']) > 0:
                 host_player = session['Players'][0]
                 host_ids = host_player.get('IDs', {})
                 
-                # Try Steam ID first
                 steam_data = host_ids.get('Steam', {})
                 if steam_data and steam_data.get('ID'):
                     profile_key = f"S{steam_data['ID']}"
                 else:
-                    # Try GOG ID if Steam ID not found
                     gog_data = host_ids.get('Gog', {})
                     profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                 
-                # Get host name from profile data, fallback to session name if not found
                 host_name = profile_names.get(profile_key, host_player.get('Name', 'Unknown'))
 
-            # Get other session info
             player_count = session.get('PlayerCount', {}).get('Player', 0)
             player_types = session.get('PlayerTypes', [])
             max_players = player_types[0].get('Max', 0) if player_types else 0
             
-            # Get level info
             level = session.get('Level', {})
             game_mode = level.get('GameMode', {}).get('ID', 'Unknown')
             
-            # Get map file name and handle "25" suffix
             map_file = level.get('MapFile', '')
             if map_file:
-                # Remove .bzn extension if present
                 map_name = map_file.replace('.bzn', '')
-                # If name ends with "25", remove it
                 if map_name.endswith('25'):
                     map_name = map_name[:-2]
             else:
                 map_name = 'Unknown'
 
-            # Add Game Status
             status = session.get('Status', {}).get('State', 'Unknown')
             time_seconds = session.get('Time', {}).get('Seconds', 0)
-            time_mins = time_seconds // 60  # Convert seconds to minutes
+            time_mins = time_seconds // 60
             
             if status == "PreGame":
                 status = f"In-Lobby ({time_mins} mins)"
             elif status == "InGame":
                 status = f"In-Game ({time_mins} mins)"
             
-            # Get NAT Type from session
             nat_type = session.get('Address', {}).get('NAT_TYPE', 'Unknown')
             
-            # Get game version and mod info
             game_version = session.get('Game', {}).get('Version', 'Unknown')
             mod_id = session.get('Game', {}).get('Mod')
             mod_name = mods_mapping.get(mod_id, {}).get('Name', 'Unknown')
             mod_url = mods_mapping.get(mod_id, {}).get('Url')
 
-            # Format mod field with mod link first, then plain version on next line
             if mod_url:
                 mod_field = f"[{mod_name}]({mod_url})\n{game_version}"
             else:
                 mod_field = f"{mod_name}\n{game_version}"
 
-            # Format NAT ID for join URL
             nat_id = session.get('Address', {}).get('NAT', '')
             formatted_nat = nat_id.replace('@', 'A').replace('-', '0').replace('_', 'L')
             join_url = f"https://join.bz2vsr.com/{formatted_nat}"
 
-            # Create embed base structure first
             embed = {
                 "title": "▶️  Join Game",
                 "url": join_url,
@@ -262,23 +241,18 @@ class BZBot:
                 "color": 3447003  # Blue
             }
 
-            # Add base fields
             embed["fields"].extend([
-                # Row 1: Game Name | Host
                 {"name": "🎮  Game Name", "value": f"```{session.get('Name', 'Unnamed')}```", "inline": True},
                 {"name": "👤  Host", "value": f"```{host_name}```", "inline": True},
                 {"name": "\u200b", "value": "\u200b", "inline": True},
-                # Row 2: Players | Status
                 {"name": "👥  Players", "value": f"```{player_count}/{max_players}```", "inline": True},
                 {"name": "📊  Status", "value": f"```{status}```", "inline": True},
                 {"name": "\u200b", "value": "\u200b", "inline": True},
-                # Row 3: Mode | NAT Type
                 {"name": "🎲  Mode", "value": f"```{game_mode}```", "inline": True},
                 {"name": "🌐  NAT Type", "value": f"```{nat_type}```", "inline": True},
                 {"name": "\u200b", "value": "\u200b", "inline": True},
             ])
 
-            # Add Locked status if game is locked
             is_locked = session.get('Status', {}).get('IsLocked', False)
             if is_locked:
                 embed["fields"].extend([
@@ -287,16 +261,12 @@ class BZBot:
                     {"name": "\u200b", "value": "\u200b", "inline": True},
                 ])
 
-            # Process players and teams
             teams = {}
             profile_names = {}
             profile_urls = {}
 
-            # First pass - collect profile data
             for player in session.get('Players', []):
-                # Extract team ID from the team object
                 team_data = player.get('Team', {})
-                # Try to get team ID from either direct Team ID or SubTeam ID
                 team_id = str(team_data.get('ID', team_data.get('SubTeam', {}).get('ID', -1)))
                 
                 if team_id not in teams:
@@ -304,21 +274,17 @@ class BZBot:
                 
                 player_ids = player.get('IDs', {})
                 
-                # Try Steam ID first
                 steam_data = player_ids.get('Steam', {})
                 if steam_data and steam_data.get('ID'):
                     profile_key = f"S{steam_data['ID']}"
-                    # Get Steam profile URL from API response
                     if api_response:
                         steam_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Steam', {}).get(steam_data['ID'], {})
                         profile_urls[profile_key] = steam_info.get('ProfileUrl')
                         profile_names[profile_key] = steam_info.get('Nickname', player.get('Name', 'Unknown'))
                 else:
-                    # Try GOG ID if Steam ID not found
                     gog_data = player_ids.get('Gog', {})
                     if gog_data and gog_data.get('ID'):
                         profile_key = f"G{gog_data['ID']}"
-                        # Get GOG profile URL from API response
                         if api_response:
                             gog_info = api_response.get('DataCache', {}).get('Players', {}).get('IDs', {}).get('Gog', {}).get(gog_data['ID'], {})
                             profile_urls[profile_key] = gog_info.get('ProfileUrl')
@@ -326,16 +292,13 @@ class BZBot:
                     else:
                         profile_key = None
                 
-                # Get player name from profile data, fallback to session name if not found
                 player_name = profile_names.get(profile_key, player.get('Name', 'Unknown'))
                 
-                # Add commander prefix if player is team leader
                 if team_data.get('Leader') is True:
                     prefix = "C: "
                 else:
                     prefix = ""
                 
-                # Create clickable player name if we have their profile
                 if profile_key and profile_urls.get(profile_key):
                     player_name = f"{prefix}[{player_name}]({profile_urls[profile_key]})"
                 else:
@@ -348,16 +311,12 @@ class BZBot:
                 player_with_stats = f"{player_name} ({kills}/{deaths}/{score})"
                 teams[team_id].append(player_with_stats)
 
-            # Always show Team 1 and Team 2 for STRAT, force Computer for MPI
             is_mpi = session.get('Level', {}).get('GameMode', {}).get('ID', 'Unknown') == "MPI"
             is_strat = session.get('Level', {}).get('GameMode', {}).get('ID', 'Unknown') == "STRAT"
             
-            # Only show teams for STRAT and MPI modes
             if is_strat or is_mpi:
-                # Add a spacer field before teams
                 embed["fields"].append({"name": "\u200b", "value": "\u200b", "inline": False})
 
-                # Team 1
                 team1_players = teams.get('1', [])
                 team1_value = "\n".join(team1_players) if team1_players else "*Empty*"
                 embed["fields"].append({
@@ -366,10 +325,9 @@ class BZBot:
                     "inline": True
                 })
 
-                # Team 2
                 if is_mpi:
                     team2_value = "**Computer**"
-                else:  # STRAT
+                else:
                     team2_players = teams.get('2', [])
                     team2_value = "\n".join(team2_players) if team2_players else "*Empty*"
                 
@@ -379,32 +337,24 @@ class BZBot:
                     "inline": True
                 })
 
-                # Add third column spacer to maintain alignment
                 embed["fields"].append({"name": "\u200b", "value": "\u200b", "inline": True})
 
-                # Add a spacer field after teams
                 embed["fields"].append({"name": "\u200b", "value": "\u200b", "inline": False})
 
-            # Format map details
             map_file = session.get('Level', {}).get('MapFile', 'Unknown')
             map_name = session.get('Level', {}).get('Name', 'Unknown')
             
-            # Clean up map name - take only the part after the last colon if it exists
             if ':' in map_name:
                 map_name = map_name.split(':')[-1].strip()
             
-            # Clean up map file for URL and VSR lookup - lowercase, remove .bzn and trailing 25
             clean_map_file = map_file.lower().replace('.bzn', '')
             if clean_map_file.endswith('25'):
                 clean_map_file = clean_map_file[:-2]
             
-            # Format basic map details
             map_details = f"Name: {map_name}\n"
             map_details += f"File: {clean_map_file}\n"
             
-            # Look up additional info from VSR map list
             if map_file:
-                # Find matching map in VSR list using cleaned map file
                 vsr_map = next((m for m in self.vsr_maps if m.get('File', '').lower() == clean_map_file.lower()), None)
                 
                 if vsr_map:
@@ -420,18 +370,14 @@ class BZBot:
                     map_details += f"\nSize (m): {size}"
                     map_details += f"\nAuthor: {author}"
             
-            # Add to embed fields - full width with Browse Maps link
             embed["fields"].extend([
-                # Map Details (full width)
                 {"name": "🗺️  Map Details", "value": f"[Browse Maps](https://bz2vsr.com/maps/?map={clean_map_file})\n```{map_details}```", "inline": False},
             ])
 
-            # Add Mod after Map details
             embed["fields"].extend([
                 {"name": "", "value": mod_field, "inline": True}
             ])
 
-            # Add thumbnail if we have a map image
             map_image = session.get('Level', {}).get('Image')
             if map_image:
                 embed["thumbnail"] = {"url": map_image}
@@ -448,40 +394,34 @@ class BZBot:
         
         try:
             if is_new or session_id not in self.message_ids:
-                # Send new message
                 content = ""
                 if new_session_count > 0:
                     if new_session_count == 1:
-                        # Get host name from the first player
                         host_name = "Unknown"
                         if session.get('Players'):
                             host_player = session['Players'][0]
                             host_ids = host_player.get('IDs', {})
                             
-                            # Try Steam ID first
                             steam_data = host_ids.get('Steam', {})
                             if steam_data and steam_data.get('ID'):
                                 profile_key = f"S{steam_data['ID']}"
                             else:
-                                # Try GOG ID if Steam ID not found
                                 gog_data = host_ids.get('Gog', {})
                                 profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                             
-                            # Get host name from profile data if available
                             if api_response and 'DataCache' in api_response:
                                 player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
                                 if profile_key and profile_key.startswith('S'):
-                                    steam_id = profile_key[1:]  # Remove 'S' prefix
+                                    steam_id = profile_key[1:]
                                     host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
                                 elif profile_key and profile_key.startswith('G'):
-                                    gog_id = profile_key[1:]  # Remove 'G' prefix
+                                    gog_id = profile_key[1:]
                                     host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                         
                         content = f"🆕 Game Up (Host: {host_name}) @everyone"
                     else:
                         content = f"🆕 {new_session_count} Games Up @everyone"
                 
-                # Add ?wait=true to get the message data back
                 webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
                 webhook_data = {
                     "content": content,
@@ -489,7 +429,7 @@ class BZBot:
                 }
                 
                 async with self.session.post(webhook_url, json=webhook_data) as response:
-                    if response.status == 200:  # With wait=true, we'll get a 200 with the message data
+                    if response.status == 200:
                         response_data = await response.json()
                         self.message_ids[session_id] = response_data['id']
                         logger.info(f"New Discord notification sent for session: {session.get('Name')} (Message ID: {response_data['id']})")
@@ -497,32 +437,27 @@ class BZBot:
                         logger.error(f"Failed to send new Discord message: {response.status}")
                         logger.error(f"Response text: {await response.text()}")
             else:
-                # Compare with previous session state to identify changes
                 prev_session = self.active_sessions.get(session_id, {})
                 changes = []
                 
                 logger.debug(f"Previous session players: {[p.get('Name') for p in prev_session.get('Players', [])]}")
                 logger.debug(f"Current session players: {[p.get('Name') for p in session.get('Players', [])]}")
                 
-                # Check player count changes
                 prev_count = len(prev_session.get('Players', []))
                 curr_count = len(session.get('Players', []))
                 if prev_count != curr_count:
                     changes.append(f"players ({prev_count}->{curr_count})")
                 
-                # Check status changes
                 prev_status = prev_session.get('Status', {}).get('State', '')
                 curr_status = session.get('Status', {}).get('State', '')
                 if prev_status != curr_status:
                     changes.append(f"status ({prev_status}->{curr_status})")
                 
-                # Check map changes
                 prev_map = prev_session.get('Level', {}).get('MapFile', '')
                 curr_map = session.get('Level', {}).get('MapFile', '')
                 if prev_map != curr_map:
                     changes.append(f"map ({prev_map}->{curr_map})")
                 
-                # Check players who joined/left and their stats/team changes
                 prev_players = {}
                 for p in prev_session.get('Players', []):
                     name = p.get('Name')
@@ -543,7 +478,6 @@ class BZBot:
                         'stats': p.get('Stats', {})
                     }
                 
-                # Check for players who joined or left
                 joined = set(curr_players.keys()) - set(prev_players.keys())
                 left = set(prev_players.keys()) - set(curr_players.keys())
                 if joined:
@@ -551,12 +485,10 @@ class BZBot:
                 if left:
                     changes.append(f"left ({', '.join(left)})")
                 
-                # Check for changes in existing players
                 for name in set(prev_players.keys()) & set(curr_players.keys()):
                     prev_data = prev_players[name]
                     curr_data = curr_players[name]
                     
-                    # Check team changes
                     prev_team = prev_data['team']
                     curr_team = curr_data['team']
                     logger.debug(f"Comparing teams for {name}: prev={prev_team}, curr={curr_team}")
@@ -564,7 +496,6 @@ class BZBot:
                         logger.debug(f"Team change detected for {name}: {prev_team} -> {curr_team}")
                         changes.append(f"{name} switched teams ({prev_team}->{curr_team})")
                     
-                    # Check stats changes
                     prev_stats = prev_data['stats']
                     curr_stats = curr_data['stats']
                     if prev_stats != curr_stats:
@@ -580,7 +511,6 @@ class BZBot:
                 changes_str = ", ".join(changes) if changes else "no detected changes"
                 logger.info(f"Updated Discord notification for session: {session.get('Name')} (Message ID: {session_id}) - Changes: {changes_str}")
                 
-                # Update existing message
                 webhook_data = {
                     "embeds": [embed]
                 }
@@ -591,7 +521,6 @@ class BZBot:
                     if response.status not in [200, 204]:
                         logger.error(f"Failed to update Discord message: {response.status}")
                         logger.error(f"Response text: {await response.text()}")
-                        # If update fails, remove the message ID and try sending as new
                         logger.warning(f"Update failed, removing message ID {message_id} and sending new message")
                         del self.message_ids[session_id]
                         await self.send_discord_notification(session, mods_mapping, is_new=True, api_response=api_response)
@@ -642,53 +571,43 @@ class BZBot:
             if not api_response:
                 return
 
-            # Update mods mapping from API response
             self.mods = api_response.get('Mods', {})
-            self.last_known_mods = {**self.last_known_mods, **self.mods}  # Store current mods data
+            self.last_known_mods = {**self.last_known_mods, **self.mods}
             
-            # Get current session IDs from API response
             current_session_ids = {session['ID'] for session in api_response.get('Sessions', [])}
             
-            # Check for ended sessions first
             for session_id in list(self.active_sessions.keys()):
                 if session_id not in current_session_ids:
                     logger.info(f"Session {session_id} has ended, marking as ended")
                     await self.mark_session_ended(session_id, self.active_sessions[session_id], self.mods, api_response)
                     continue
 
-            # Process active sessions
             for session in api_response.get('Sessions', []):
                 session_id = session.get('ID')
                 session_name = session.get('Name', 'Unknown')
                 if not session_id:
                     continue
 
-                # Initialize current_players at the start
                 current_players = session.get('PlayerCount', {}).get('Player', 0)
                 current_state = session.get('Status', {}).get('State')
                 previous_state = self.last_known_states.get(session_id)
 
-                # Only process sessions with monitored players
                 if not await self.has_monitored_player(session):
                     if session_id in self.active_sessions:
                         await self.mark_session_ended(session_id, session, self.mods, api_response)
                     continue
 
-                # Check for game end (InGame -> PreGame transition)
                 if previous_state == "InGame" and current_state == "PreGame":
                     logger.info(f"[{session_name}] Game ended, creating new embed")
                     
-                    # Mark the old embed as ended
                     if session_id in self.message_ids:
                         old_message_id = self.message_ids[session_id]
                         try:
-                            # Update the old message to show game ended
                             old_embed = await self.format_session_embed(self.active_sessions[session_id], self.mods, api_response)
                             old_embed['title'] = "❌  Game Ended"
-                            old_embed.pop('url', None)  # Remove the join URL
-                            old_embed['color'] = 15158332  # Discord red color
+                            old_embed.pop('url', None)
+                            old_embed['color'] = 15158332
                             
-                            # Update the old message
                             webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{old_message_id}"
                             patch_data = {"embeds": [old_embed]}
                             async with self.session.patch(webhook_url, json=patch_data) as response:
@@ -697,28 +616,22 @@ class BZBot:
                         except Exception as e:
                             logger.error(f"Error updating old embed: {e}")
                         
-                        # Clear the message ID so a new one will be created
                         self.message_ids.pop(session_id, None)
                     
-                    # Create new embed for the new game
                     embed = await self.format_session_embed(session, self.mods, api_response)
                     
-                    # Get host name for notification
                     host_name = "Unknown"
                     if session.get('Players'):
                         host_player = session['Players'][0]
                         host_ids = host_player.get('IDs', {})
                         
-                        # Try Steam ID first
                         steam_data = host_ids.get('Steam', {})
                         if steam_data and steam_data.get('ID'):
                             profile_key = f"S{steam_data['ID']}"
                         else:
-                            # Try GOG ID if Steam ID not found
                             gog_data = host_ids.get('Gog', {})
                             profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                         
-                        # Get host name from profile data
                         if api_response and 'DataCache' in api_response:
                             player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
                             if profile_key and profile_key.startswith('S'):
@@ -728,7 +641,6 @@ class BZBot:
                                 gog_id = profile_key[1:]
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
-                    # Send new game notification and embed
                     webhook_data = {
                         "content": f"🆕 Game Up (Host: {host_name}) @everyone",
                         "embeds": [embed]
@@ -745,18 +657,14 @@ class BZBot:
                     except Exception as e:
                         logger.error(f"Error creating new embed: {e}")
 
-                # Normal session updates
                 elif session_id in self.active_sessions:
-                    # Get current and max player counts
                     max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
                     previous_count = self.player_counts.get(session_id, 0)
                     
                     if current_players != previous_count:
-                        # Get list of current and previous players
                         current_players_list = {p.get('Name') for p in session.get('Players', [])}
                         previous_players_list = {p.get('Name') for p in self.active_sessions[session_id].get('Players', [])}
                         
-                        # Determine who joined or left
                         if current_players > previous_count:
                             joined_players = current_players_list - previous_players_list
                             player_name = next(iter(joined_players)) if joined_players else "Unknown"
@@ -768,7 +676,6 @@ class BZBot:
                             message = f"{current_players}/{max_players} ({player_name} left) @everyone"
                             logger.info(f"[{session_name}] {player_name} left ({current_players}/{max_players})")
                         
-                        # Post the notification
                         try:
                             webhook_data = {
                                 "content": message
@@ -779,7 +686,6 @@ class BZBot:
                         except Exception as e:
                             logger.error(f"[{session_name}] Error sending notification: {e}")
 
-                    # Update existing embed if needed
                     if session_id in self.message_ids:
                         message_id = self.message_ids[session_id]
                         embed = await self.format_session_embed(session, self.mods, api_response)
@@ -795,21 +701,17 @@ class BZBot:
                             logger.error(f"Error updating embed: {e}")
 
                 else:
-                    # New session
                     embed = await self.format_session_embed(session, api_response.get('Mods', {}), api_response)
                     
-                    # Get host info (first player in the array)
                     host_name = "Unknown"
                     if session.get('Players') and len(session['Players']) > 0:
                         host_player = session['Players'][0]
                         host_ids = host_player.get('IDs', {})
                         
-                        # Try Steam ID first
                         steam_data = host_ids.get('Steam', {})
                         if steam_data and steam_data.get('ID'):
                             profile_key = f"S{steam_data['ID']}"
                         else:
-                            # Try GOG ID if Steam ID not found
                             gog_data = host_ids.get('Gog', {})
                             profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                         
@@ -823,7 +725,6 @@ class BZBot:
                                 gog_id = profile_key[1:]  # Remove 'G' prefix
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
-                    # Combine notification and embed in a single webhook message
                     webhook_data = {
                         "content": f"🆕 Game Up (Host: {host_name}) @everyone",
                         "embeds": [embed]
@@ -840,12 +741,10 @@ class BZBot:
                     except Exception as e:
                         logger.error(f"Error creating embed: {e}")
 
-                # Update tracking
                 self.active_sessions[session_id] = session
                 self.player_counts[session_id] = current_players
                 self.last_known_states[session_id] = current_state
 
-                # Store the API response for this session
                 self.last_api_responses[session_id] = api_response
 
         except Exception as e:
@@ -875,33 +774,26 @@ class BZBot:
         if session_id in self.message_ids:
             message_id = self.message_ids[session_id]
             
-            # Get the last known mod data
             game_data = session.get('Game', {})
             mod_id = str(game_data.get('Mod', ''))
             mod_field = "Unknown"
             
-            # Try to get mod info from current mods mapping first
             if mod_id in mods:
                 mod_data = mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
-            # Fallback to last known mods if not in current mapping
             elif mod_id in self.last_known_mods:
                 mod_data = self.last_known_mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
             
-            # Format embed with last known data
             last_embed = await self.format_session_embed(session, mods, api_response)
             
-            # Process players and teams with preserved links
             teams = {}
             for player in session.get('Players', []):
-                # Extract team ID from the team object
                 team_data = player.get('Team', {})
-                # Try to get team ID from either direct Team ID or SubTeam ID
                 team_id = str(team_data.get('ID', team_data.get('SubTeam', {}).get('ID', -1)))
                 
                 if team_id not in teams:
@@ -909,32 +801,27 @@ class BZBot:
                 
                 player_ids = player.get('IDs', {})
                 
-                # Try Steam ID first
                 steam_data = player_ids.get('Steam', {})
                 if steam_data and steam_data.get('ID'):
                     profile_key = f"S{steam_data['ID']}"
                 else:
-                    # Try GOG ID if Steam ID not found
                     gog_data = player_ids.get('Gog', {})
                     profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
                 
-                # Get player name from profile data, fallback to session name if not found
                 player_name = player.get('Name', 'Unknown')
                 profile_url = None
                 
-                # Try to get profile URL from current API response first
                 if profile_key and api_response and 'DataCache' in api_response:
                     player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
                     if profile_key.startswith('S'):
-                        steam_id = profile_key[1:]  # Remove 'S' prefix
+                        steam_id = profile_key[1:]
                         steam_info = player_ids.get('Steam', {}).get(steam_id, {})
                         profile_url = steam_info.get('ProfileUrl')
                     elif profile_key.startswith('G'):
-                        gog_id = profile_key[1:]  # Remove 'G' prefix
+                        gog_id = profile_key[1:]
                         gog_info = player_ids.get('Gog', {}).get(gog_id, {})
                         profile_url = gog_info.get('ProfileUrl')
                 
-                # If no profile URL in current response, try last known response
                 if not profile_url and session_id in self.last_api_responses:
                     last_response = self.last_api_responses[session_id]
                     if 'DataCache' in last_response:
@@ -948,29 +835,24 @@ class BZBot:
                             gog_info = player_ids.get('Gog', {}).get(gog_id, {})
                             profile_url = gog_info.get('ProfileUrl')
                 
-                # Add commander prefix if player is team leader
                 prefix = "C: " if team_data.get('Leader') is True else ""
                 
-                # Format player name with link if available
                 if profile_url:
                     player_name = f"{prefix}[{player_name}]({profile_url})"
                 else:
                     player_name = f"{prefix}{player_name}"
                 
-                # Add stats
                 kills = player.get('Stats', {}).get('Kills', 0)
                 deaths = player.get('Stats', {}).get('Deaths', 0)
                 score = player.get('Stats', {}).get('Score', 0)
                 player_with_stats = f"{player_name} ({kills}/{deaths}/{score})"
                 teams[team_id].append(player_with_stats)
             
-            # Update team fields in the embed
             for field in last_embed["fields"]:
                 if field.get("name") == "👥  **TEAM 1**":
                     team1_players = teams.get('1', [])
                     field["value"] = "\n".join(team1_players) if team1_players else "*Empty*"
                 elif field.get("name") == "👥  **TEAM 2**":
-                    # Check if it's MPI mode
                     is_mpi = session.get('Level', {}).get('GameMode', {}).get('ID', 'Unknown') == "MPI"
                     if is_mpi:
                         field["value"] = "**Computer**"
@@ -978,14 +860,12 @@ class BZBot:
                         team2_players = teams.get('2', [])
                         field["value"] = "\n".join(team2_players) if team2_players else "*Empty*"
             
-            # Modify the embed to show ended state
             last_embed["title"] = "❌  Session Ended"
-            last_embed.pop("url", None)  # Remove the join URL
-            last_embed["color"] = 15158332  # Discord red color
+            last_embed.pop("url", None)
+            last_embed["color"] = 15158332
             
-            # Ensure mod field stays intact
             for field in last_embed["fields"]:
-                if field.get("name", "").strip() == "":  # This is our mod field
+                if field.get("name", "").strip() == "":
                     field["value"] = mod_field
                     break
             
@@ -1000,7 +880,6 @@ class BZBot:
                 else:
                     logger.error(f"Failed to update ended session message: {response.status}")
             
-            # Clean up tracking dictionaries
             self.active_sessions.pop(session_id, None)
             self.message_ids.pop(session_id, None)
             self.player_counts.pop(session_id, None)
@@ -1012,12 +891,10 @@ class BZBot:
         """Format player name with profile link and leader prefix"""
         name = player.get('Name', 'Unknown')
         is_leader = player.get('Team', {}).get('Leader', False)
-        prefix = "C: " if is_leader else ""  # Add "C: " prefix for team leaders
+        prefix = "C: " if is_leader else ""
         
-        # Get Steam or GOG profile link
         player_ids = player.get('IDs', {})
         
-        # Check for Steam ID
         steam_data = player_ids.get('Steam', {})
         if steam_data:
             steam_id = steam_data.get('ID')
@@ -1028,7 +905,6 @@ class BZBot:
                     if profile_url:
                         return f"{prefix}[{name}]({profile_url})"
         
-        # Check for GOG ID
         gog_data = player_ids.get('Gog', {})
         if gog_data:
             gog_id = gog_data.get('ID')
@@ -1039,7 +915,6 @@ class BZBot:
                     if profile_url:
                         return f"{prefix}[{name}]({profile_url})"
         
-        # Return plain name if no profile link found
         return f"{prefix}{name}"
 
     async def health_check(self):
@@ -1052,7 +927,6 @@ class BZBot:
         }
 
     async def send_webhook(self, webhook_data, message_id=None):
-        """Centralized webhook sending with better error handling"""
         try:
             webhook_url = config.DISCORD_WEBHOOK_URL
             if message_id:
@@ -1078,7 +952,6 @@ class BZBot:
             return None
 
     async def create_embed(self, session, embed):
-        """Create a new embed message"""
         webhook_data = {
             "embeds": [embed]
         }
@@ -1088,14 +961,12 @@ class BZBot:
         return None
 
     async def update_embed(self, message_id, embed):
-        """Update an existing embed message"""
         webhook_data = {
             "embeds": [embed]
         }
         return await self.send_webhook(webhook_data, message_id)
 
     async def send_notification(self, content):
-        """Send a text notification"""
         webhook_data = {
             "content": content
         }
