@@ -19,7 +19,7 @@ MONITORED_STEAM_IDS = [
     "running-roxas",      # Sly
     "76561198068133931",  # Econchump
     "76561198026325621",  # F9Bomber
-    # "76561198820311491",  # blue_banana
+    "76561198820311491",  # blue_banana
     # "76561198058690608",  # JudgeGuns
     # "76561199732480793",  # XPi
     # "76561198088149233",  # Muffin
