@@ -2,38 +2,61 @@ import sys
 import time
 import logging
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 import subprocess
 
-class RestartHandler(FileSystemEventHandler):
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class ChangeHandler(FileSystemEventHandler):
     def __init__(self):
+        self.last_reload = 0
         self.process = None
-        self.start_bot()
-
-    def start_bot(self):
-        if self.process:
-            self.process.terminate()
-            self.process.wait()
-        print("\n[RELOAD] Starting bot...")
-        self.process = subprocess.Popen([sys.executable, 'main.py'])
-
+        self.reloading = False
+        
     def on_modified(self, event):
-        if event.src_path.endswith(('.py', '.json')):
-            print(f"\n[RELOAD] {event.src_path} changed. Restarting bot...")
-            self.start_bot()
+        if not isinstance(event, FileModifiedEvent):
+            return
+            
+        if event.src_path.endswith('.py'):
+            current_time = time.time()
+            
+            if self.reloading:
+                return
+                
+            if current_time - self.last_reload < 2:
+                return
+                
+            self.reloading = True
+            self.last_reload = current_time
+            
+            logger.info("[RELOAD] Starting bot...")
+            
+            if self.process:
+                self.process.kill()
+                self.process.wait()
+            
+            self.process = subprocess.Popen([sys.executable, 'main.py'])
+            time.sleep(1)
+            self.reloading = False
 
-if __name__ == "__main__":
-    handler = RestartHandler()
+def main():
+    handler = ChangeHandler()
     observer = Observer()
     observer.schedule(handler, path='.', recursive=False)
     observer.start()
 
+    handler.process = subprocess.Popen([sys.executable, 'main.py'])
+    
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[EXIT] Stopping bot and file watcher...")
-        if handler.process:
-            handler.process.terminate()
         observer.stop()
-    observer.join() 
+        if handler.process:
+            handler.process.kill()
+            handler.process.wait()
+    observer.join()
+
+if __name__ == "__main__":
+    main() 

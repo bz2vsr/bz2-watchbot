@@ -410,9 +410,9 @@ class BZBot:
                                     gog_id = profile_key[1:]
                                     host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                         
-                        content = f"🆕 Game Up (Host: {host_name}) @everyone"
+                        content = f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}"
                     else:
-                        content = f"🆕 {new_session_count} Games Up @everyone"
+                        content = f"🆕 {new_session_count} Games Up {config.NOTIFICATION_TAG}"
                 
                 webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
                 webhook_data = {
@@ -524,10 +524,10 @@ class BZBot:
     async def send_player_count_notification(self, player_count, max_players, change_msg=None):
         """Send a notification about player count changes"""
         if change_msg:
-            content = f"{player_count}/{max_players} ({change_msg}) @everyone"
+            content = f"{player_count}/{max_players} ({change_msg}) {config.NOTIFICATION_TAG}"
         else:
             spots_left = max_players - player_count
-            content = f"👥 {player_count}/{max_players} ({spots_left} spots left) @everyone"
+            content = f"👥 {player_count}/{max_players} ({spots_left} spots left) {config.NOTIFICATION_TAG}"
         
         webhook_data = {
             "content": content
@@ -634,7 +634,7 @@ class BZBot:
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
                     webhook_data = {
-                        "content": f"🆕 Game Up (Host: {host_name}) @everyone",
+                        "content": f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}",
                         "embeds": [embed]
                     }
                     
@@ -660,12 +660,12 @@ class BZBot:
                         if current_players > previous_count:
                             joined_players = current_players_list - previous_players_list
                             player_name = next(iter(joined_players)) if joined_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} joined) @everyone"
+                            message = f"{current_players}/{max_players} ({player_name} joined) {config.NOTIFICATION_TAG}"
                             logger.info(f"[{session_name}] {player_name} joined ({current_players}/{max_players})")
                         else:
                             left_players = previous_players_list - current_players_list
                             player_name = next(iter(left_players)) if left_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} left) @everyone"
+                            message = f"{current_players}/{max_players} ({player_name} left) {config.NOTIFICATION_TAG}"
                             logger.info(f"[{session_name}] {player_name} left ({current_players}/{max_players})")
                         
                         try:
@@ -717,7 +717,7 @@ class BZBot:
                                 host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
                     
                     webhook_data = {
-                        "content": f"🆕 Game Up (Host: {host_name}) @everyone",
+                        "content": f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}",
                         "embeds": [embed]
                     }
                     
@@ -923,6 +923,12 @@ class BZBot:
             if message_id:
                 webhook_url = f"{webhook_url}/messages/{message_id}"
             
+            webhook_data = {
+                "username": "WatchBot",
+                "content": webhook_data.get("content", ""),
+                "embeds": webhook_data.get("embeds", [])
+            }
+            
             method = "PATCH" if message_id else "POST"
             logger.info(f"Sending {method} request to webhook")
             
@@ -966,6 +972,20 @@ class BZBot:
 async def main():
     bot = BZBot()
     try:
+        startup_message = {
+            "username": "WatchBot",
+            "embeds": [{
+                "title": "Hey there, WatchBot here! 👋",
+                "description": "I'm now watching for BZ2 Vet Strat games and will ping accordingly for them, including:\n\n• When a game is first detected\n• When player counts change\n• When games (within the same session) end",
+                "color": 3066993  # Discord green color
+            }]
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(config.DISCORD_WEBHOOK_URL, json=startup_message) as response:
+                if response.status not in [200, 204]:
+                    logger.error(f"Failed to send startup message: {response.status}")
+        
         await bot.run()
     except (KeyboardInterrupt, asyncio.CancelledError):
         logger.info("Bot stopped by user")
