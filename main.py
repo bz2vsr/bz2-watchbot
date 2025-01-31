@@ -38,27 +38,28 @@ class CustomFormatter(logging.Formatter):
 
 def setup_logging():
     """Configure logging with both console and file output"""
-    logger = logging.getLogger('bzbot') 
-    logger.setLevel(logging.INFO) 
+    logger = logging.getLogger('bzbot')
+    logger.setLevel(logging.DEBUG)  # Changed from INFO to DEBUG
     
     logger.handlers = []
     
     console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)  # Changed from INFO to DEBUG
     console_handler.setFormatter(CustomFormatter())
     logger.addHandler(console_handler)
     
     file_handler = logging.handlers.RotatingFileHandler(
-        'logs/bzbot.log',  
-        maxBytes=1024 * 1024,  # 1MB per file
-        backupCount=5, 
+        'logs/bzbot.log',
+        maxBytes=1024 * 1024,
+        backupCount=5,
         encoding='utf-8'
     )
-
     file_format = logging.Formatter(
         '%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     file_handler.setFormatter(file_format)
+    file_handler.setLevel(logging.DEBUG)  # Changed from INFO to DEBUG
     logger.addHandler(file_handler)
     
     return logger
@@ -106,7 +107,6 @@ class BZBot:
             async with self.session.get(config.API_URL) as response:
                 if response.status == 200:
                     data = await response.json()
-                    logger.debug("API request successful")
                     return data
                 else:
                     logger.error(f"API request failed with status {response.status}")
@@ -116,7 +116,7 @@ class BZBot:
             logger.error(f"Network error during API request: {str(e)}")
             return None
         except Exception as e:
-            logger.error(f"Unexpected error during API request: {str(e)}")
+            logger.error(f"Error during API request: {str(e)}")
             return None
 
     async def format_session_embed(self, session, mods_mapping, api_response=None):
@@ -170,19 +170,36 @@ class BZBot:
                         profile_names[f"G{gog_id}"] = username
 
             host_name = "Unknown"
+            host_is_monitored = False
+            profile_key = None
             if session.get('Players') and len(session['Players']) > 0:
                 host_player = session['Players'][0]
                 host_ids = host_player.get('IDs', {})
                 
                 steam_data = host_ids.get('Steam', {})
-                if steam_data and steam_data.get('ID'):
-                    profile_key = f"S{steam_data['ID']}"
-                else:
-                    gog_data = host_ids.get('Gog', {})
-                    profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
+                if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                    host_is_monitored = True
+                    profile_key = f"S{steam_data.get('ID')}"
                 
-                host_name = profile_names.get(profile_key, host_player.get('Name', 'Unknown'))
-
+                gog_data = host_ids.get('Gog', {})
+                if not host_is_monitored and gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                    host_is_monitored = True
+                    profile_key = f"G{gog_data.get('ID')}"
+                
+                if not host_is_monitored and host_player.get('Name') in config.MONITORED_STEAM_IDS:
+                    host_is_monitored = True
+                
+                if api_response and 'DataCache' in api_response:
+                    player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
+                    if profile_key and profile_key.startswith('S'):
+                        steam_id = profile_key[1:]  
+                        host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
+                    elif profile_key and profile_key.startswith('G'):
+                        gog_id = profile_key[1:]  
+                        host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
+                    else:
+                        host_name = host_player.get('Name', 'Unknown')
+            
             player_count = session.get('PlayerCount', {}).get('Player', 0)
             player_types = session.get('PlayerTypes', [])
             max_players = player_types[0].get('Max', 0) if player_types else 0
@@ -204,8 +221,12 @@ class BZBot:
             
             if status == "PreGame":
                 status = f"In-Lobby ({time_mins} mins)"
+                embed_color = 3447003  # Discord blue color
             elif status == "InGame":
                 status = f"In-Game ({time_mins} mins)"
+                embed_color = 3066993  # Discord green color
+            else:
+                embed_color = 3447003  # Default blue color
             
             nat_type = session.get('Address', {}).get('NAT_TYPE', 'Unknown')
             
@@ -230,7 +251,7 @@ class BZBot:
                 "footer": {
                     "text": f"GameWatch • Last Updated: {datetime.now().strftime('%I:%M %p')} 🔄"
                 },
-                "color": 3447003  
+                "color": embed_color  # Use our dynamic color
             }
 
             embed["fields"].extend([
@@ -386,20 +407,28 @@ class BZBot:
         
         try:
             if is_new or session_id not in self.message_ids:
-                content = ""
                 if new_session_count > 0:
                     if new_session_count == 1:
                         host_name = "Unknown"
+                        host_is_monitored = False
+                        profile_key = None
+                        
                         if session.get('Players'):
                             host_player = session['Players'][0]
                             host_ids = host_player.get('IDs', {})
                             
                             steam_data = host_ids.get('Steam', {})
-                            if steam_data and steam_data.get('ID'):
-                                profile_key = f"S{steam_data['ID']}"
-                            else:
-                                gog_data = host_ids.get('Gog', {})
-                                profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
+                            if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                                host_is_monitored = True
+                                profile_key = f"S{steam_data.get('ID')}"
+                            
+                            gog_data = host_ids.get('Gog', {})
+                            if not host_is_monitored and gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
+                                host_is_monitored = True
+                                profile_key = f"G{gog_data.get('ID')}"
+                            
+                            if not host_is_monitored and host_player.get('Name') in config.MONITORED_STEAM_IDS:
+                                host_is_monitored = True
                             
                             if api_response and 'DataCache' in api_response:
                                 player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
@@ -409,25 +438,31 @@ class BZBot:
                                 elif profile_key and profile_key.startswith('G'):
                                     gog_id = profile_key[1:]
                                     host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
+                                else:
+                                    host_name = host_player.get('Name', 'Unknown')
                         
-                        content = f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}"
+                        notification_suffix = config.NOTIFICATION_TAG if host_is_monitored else ""
+                        webhook_data = {
+                            "username": "WatchBot",
+                            "content": f"🆕 Game Up (Host: {host_name}) {notification_suffix}",
+                            "embeds": [embed]
+                        }
+                        logger.info(f"Webhook content: {webhook_data['content']}")
                     else:
-                        content = f"🆕 {new_session_count} Games Up {config.NOTIFICATION_TAG}"
-                
-                webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
-                webhook_data = {
-                    "content": content,
-                    "embeds": [embed]
-                }
-                
-                async with self.session.post(webhook_url, json=webhook_data) as response:
-                    if response.status == 200:
-                        response_data = await response.json()
-                        self.message_ids[session_id] = response_data['id']
-                        logger.info(f"New Discord notification sent for session: {session.get('Name')} (Message ID: {response_data['id']})")
-                    else:
-                        logger.error(f"Failed to send new Discord message: {response.status}")
-                        logger.error(f"Response text: {await response.text()}")
+                        webhook_data = {
+                            "username": "WatchBot",
+                            "content": f"🆕 {new_session_count} Games Up",
+                            "embeds": [embed]
+                        }
+                    
+                    webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
+                    async with self.session.post(webhook_url, json=webhook_data) as response:
+                        if response.status == 200:
+                            response_data = await response.json()
+                            self.message_ids[session_id] = response_data['id']
+                            logger.info(f"Created new message for session {session_id}")
+                        else:
+                            logger.error(f"Error creating message: {response.status}")
             else:
                 prev_session = self.active_sessions.get(session_id, {})
                 changes = []
@@ -474,6 +509,12 @@ class BZBot:
                 left = set(prev_players.keys()) - set(curr_players.keys())
                 if joined:
                     changes.append(f"joined ({', '.join(joined)})")
+                    for player_name in joined:
+                        if player_name in curr_players:
+                            player_data = curr_players[player_name]
+                            team_id = player_data.get('team', '')
+                            stats = player_data.get('stats', {})
+                            logger.info(f"Player {player_name} joined team {team_id} with stats: {stats}")
                 if left:
                     changes.append(f"left ({', '.join(left)})")
                 
@@ -522,12 +563,17 @@ class BZBot:
             logger.debug(f"Current message IDs: {self.message_ids}")
 
     async def send_player_count_notification(self, player_count, max_players, change_msg=None):
-        """Send a notification about player count changes"""
         if change_msg:
-            content = f"{player_count}/{max_players} ({change_msg}) {config.NOTIFICATION_TAG}"
+            # Remove any existing notification tag from change_msg
+            clean_msg = change_msg.replace(config.NOTIFICATION_TAG, '').strip()
+            
+            if "joined" in clean_msg:
+                content = f"{player_count}/{max_players} ({clean_msg}) {config.NOTIFICATION_TAG}"
+            else:
+                content = f"{player_count}/{max_players} ({clean_msg})"
         else:
             spots_left = max_players - player_count
-            content = f"👥 {player_count}/{max_players} ({spots_left} spots left) {config.NOTIFICATION_TAG}"
+            content = f"👥 {player_count}/{max_players} ({spots_left} spots left)"
         
         webhook_data = {
             "content": content
@@ -554,10 +600,10 @@ class BZBot:
             
             if player.get('Name') in config.MONITORED_STEAM_IDS:
                 return True
+                
         return False
 
     async def check_sessions(self):
-        """Check for active game sessions"""
         try:
             api_response = await self.fetch_api_data()
             if not api_response:
@@ -585,99 +631,58 @@ class BZBot:
                 previous_state = self.last_known_states.get(session_id)
 
                 if not await self.has_monitored_player(session):
-                    if session_id in self.active_sessions:
-                        await self.mark_session_ended(session_id, session, self.mods, api_response)
                     continue
 
-                if previous_state == "InGame" and current_state == "PreGame":
-                    logger.info(f"[{session_name}] Game ended, creating new embed")
-                    
-                    if session_id in self.message_ids:
-                        old_message_id = self.message_ids[session_id]
-                        try:
-                            old_embed = await self.format_session_embed(self.active_sessions[session_id], self.mods, api_response)
-                            old_embed['title'] = "❌  Game Ended"
-                            old_embed.pop('url', None)
-                            old_embed['color'] = 15158332
-                            
-                            webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{old_message_id}"
-                            patch_data = {"embeds": [old_embed]}
-                            async with self.session.patch(webhook_url, json=patch_data) as response:
-                                if response.status not in [200, 204]:
-                                    logger.error(f"Error updating old embed: {response.status}")
-                        except Exception as e:
-                            logger.error(f"Error updating old embed: {e}")
-                        
-                        self.message_ids.pop(session_id, None)
-                    
-                    embed = await self.format_session_embed(session, self.mods, api_response)
-                    
-                    host_name = "Unknown"
-                    if session.get('Players'):
-                        host_player = session['Players'][0]
-                        host_ids = host_player.get('IDs', {})
-                        
-                        steam_data = host_ids.get('Steam', {})
-                        if steam_data and steam_data.get('ID'):
-                            profile_key = f"S{steam_data['ID']}"
-                        else:
-                            gog_data = host_ids.get('Gog', {})
-                            profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
-                        
-                        if api_response and 'DataCache' in api_response:
-                            player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
-                            if profile_key and profile_key.startswith('S'):
-                                steam_id = profile_key[1:]
-                                host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
-                            elif profile_key and profile_key.startswith('G'):
-                                gog_id = profile_key[1:]
-                                host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
-                    
-                    webhook_data = {
-                        "content": f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}",
-                        "embeds": [embed]
-                    }
-                    
-                    try:
-                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
-                        async with self.session.post(webhook_url, json=webhook_data) as response:
-                            if response.status == 200:
-                                response_data = await response.json()
-                                self.message_ids[session_id] = response_data['id']
-                            else:
-                                logger.error(f"Error creating new embed: {response.status}")
-                    except Exception as e:
-                        logger.error(f"Error creating new embed: {e}")
-
+                # Only send initial notification if this is a completely new session
+                if session_id not in self.active_sessions and session_id not in self.message_ids:
+                    logger.info(f"New session detected: {session_name}")
+                    await self.send_discord_notification(session, self.mods, is_new=True, new_session_count=1, api_response=api_response)
+                
+                # Update existing session
                 elif session_id in self.active_sessions:
+                    # Handle state change from InGame to PreGame
+                    if previous_state == "InGame" and current_state == "PreGame":
+                        logger.info(f"[{session_name}] Game ended, creating new embed")
+                        if session_id in self.message_ids:
+                            old_message_id = self.message_ids[session_id]
+                            try:
+                                old_embed = await self.format_session_embed(self.active_sessions[session_id], self.mods, api_response)
+                                old_embed['title'] = "❌  Game Ended"
+                                old_embed.pop('url', None)
+                                old_embed['color'] = 15158332
+                                
+                                webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{old_message_id}"
+                                patch_data = {"embeds": [old_embed]}
+                                async with self.session.patch(webhook_url, json=patch_data) as response:
+                                    if response.status not in [200, 204]:
+                                        logger.error(f"Error updating old embed: {response.status}")
+                            except Exception as e:
+                                logger.error(f"Error updating old embed: {e}")
+                            
+                            self.message_ids.pop(session_id, None)
+                    
+                    # Handle player count changes
                     max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
                     previous_count = self.player_counts.get(session_id, 0)
                     
                     if current_players != previous_count:
-                        current_players_list = {p.get('Name') for p in session.get('Players', [])}
-                        previous_players_list = {p.get('Name') for p in self.active_sessions[session_id].get('Players', [])}
+                        current_players_list = {p.get('Name', '') for p in session.get('Players', [])}
+                        previous_players_list = {p.get('Name', '') for p in self.active_sessions[session_id].get('Players', [])}
                         
                         if current_players > previous_count:
                             joined_players = current_players_list - previous_players_list
                             player_name = next(iter(joined_players)) if joined_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} joined) {config.NOTIFICATION_TAG}"
+                            message = f"{player_name} joined"
                             logger.info(f"[{session_name}] {player_name} joined ({current_players}/{max_players})")
                         else:
                             left_players = previous_players_list - current_players_list
                             player_name = next(iter(left_players)) if left_players else "Unknown"
-                            message = f"{current_players}/{max_players} ({player_name} left) {config.NOTIFICATION_TAG}"
+                            message = f"{player_name} left"
                             logger.info(f"[{session_name}] {player_name} left ({current_players}/{max_players})")
                         
-                        try:
-                            webhook_data = {
-                                "content": message
-                            }
-                            async with self.session.post(config.DISCORD_WEBHOOK_URL, json=webhook_data) as response:
-                                if response.status != 204:
-                                    logger.error(f"[{session_name}] Failed to send notification: {response.status}")
-                        except Exception as e:
-                            logger.error(f"[{session_name}] Error sending notification: {e}")
+                        await self.send_player_count_notification(current_players, max_players, message)
 
+                    # Update the embed
                     if session_id in self.message_ids:
                         message_id = self.message_ids[session_id]
                         embed = await self.format_session_embed(session, self.mods, api_response)
@@ -685,57 +690,13 @@ class BZBot:
                             "embeds": [embed]
                         }
                         webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{message_id}"
-                        try:
-                            async with self.session.patch(webhook_url, json=webhook_data) as response:
-                                if response.status not in [200, 204]:
-                                    logger.error(f"Error updating embed: {response.status}")
-                        except Exception as e:
-                            logger.error(f"Error updating embed: {e}")
-
-                else:
-                    embed = await self.format_session_embed(session, api_response.get('Mods', {}), api_response)
-                    
-                    host_name = "Unknown"
-                    if session.get('Players') and len(session['Players']) > 0:
-                        host_player = session['Players'][0]
-                        host_ids = host_player.get('IDs', {})
-                        
-                        steam_data = host_ids.get('Steam', {})
-                        if steam_data and steam_data.get('ID'):
-                            profile_key = f"S{steam_data['ID']}"
-                        else:
-                            gog_data = host_ids.get('Gog', {})
-                            profile_key = f"G{gog_data['ID']}" if gog_data and gog_data.get('ID') else None
-                        
-                        if api_response and 'DataCache' in api_response:
-                            player_ids = api_response['DataCache'].get('Players', {}).get('IDs', {})
-                            if profile_key and profile_key.startswith('S'):
-                                steam_id = profile_key[1:]  
-                                host_name = player_ids.get('Steam', {}).get(steam_id, {}).get('Nickname', host_name)
-                            elif profile_key and profile_key.startswith('G'):
-                                gog_id = profile_key[1:]  
-                                host_name = player_ids.get('Gog', {}).get(gog_id, {}).get('Username', host_name)
-                    
-                    webhook_data = {
-                        "content": f"🆕 Game Up (Host: {host_name}) {config.NOTIFICATION_TAG}",
-                        "embeds": [embed]
-                    }
-                    
-                    try:
-                        webhook_url = f"{config.DISCORD_WEBHOOK_URL}?wait=true"
-                        async with self.session.post(webhook_url, json=webhook_data) as response:
-                            if response.status == 200:
-                                response_data = await response.json()
-                                self.message_ids[session_id] = response_data['id']
-                            else:
-                                logger.error(f"Error creating embed: {response.status}")
-                    except Exception as e:
-                        logger.error(f"Error creating embed: {e}")
+                        async with self.session.patch(webhook_url, json=webhook_data) as response:
+                            if response.status not in [200, 204]:
+                                logger.error(f"Error updating embed: {response.status}")
 
                 self.active_sessions[session_id] = session
                 self.player_counts[session_id] = current_players
                 self.last_known_states[session_id] = current_state
-
                 self.last_api_responses[session_id] = api_response
 
         except Exception as e:
