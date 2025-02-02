@@ -5,7 +5,7 @@ load_dotenv()
 
 DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 API_URL = "https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander" 
-NOTIFICATION_TAG = "@everyone"  # can be @BZ2Player, @everyone, or empty for no tags in message payloads
+NOTIFICATION_TAG = "<@&1137622254621032500>"  # ID-based role ping for @BZ2Player
 
 MONITORED_STEAM_IDS = [
     "76561198006115793",  # Domakus
