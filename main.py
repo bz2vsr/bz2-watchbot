@@ -568,7 +568,7 @@ class BZBot:
             clean_msg = change_msg.replace(config.NOTIFICATION_TAG, '').strip()
             
             if "joined" in clean_msg:
-                content = f"{player_count}/{max_players} ({clean_msg}) {config.NOTIFICATION_TAG}"
+                content = f"{player_count}/{max_players} ({clean_msg})"
             else:
                 content = f"{player_count}/{max_players} ({clean_msg})"
         else:
