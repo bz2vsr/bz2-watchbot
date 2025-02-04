@@ -12,12 +12,12 @@ MONITORED_STEAM_IDS = [
     "76561198846500539",  # Xohm
     "76561197974548434",  # VTrider
     "bz2Cyber",           # Cyber
-    "76561198825004088",  # Lamper
-    "herpmcderperson",    # Herp
     "76561198820311491",  # m.s 
-    "running-roxas",      # Sly
+    "herpmcderperson",    # Herp
     "76561198068133931",  # Econchump
     "bzlolol",            # blue_banana
+    "running-roxas",      # Sly
+    # "76561198825004088",  # Lamper
     # "76561198026325621",  # F9Bomber
     # "76561198088036138",  # dd
     # "76561198058690608",  # JudgeGuns
