@@ -584,9 +584,15 @@ class BZBot:
                 logger.error(f"Failed to send player count notification: {response.status}")
 
     async def has_monitored_player(self, session):
+        # First check if it's a test game
+        if session.get('Name', '').lower() == 'test':
+            return False
+            
+        # Then check if it's a STRAT game
         if session.get('Level', {}).get('GameMode', {}).get('ID') != "STRAT":
             return False
         
+        # Finally check for monitored players
         for player in session.get('Players', []):
             player_ids = player.get('IDs', {})
             
