@@ -943,7 +943,7 @@ async def main():
             "username": "WatchBot",
             "embeds": [{
                 "title": "Hey there, WatchBot here! 👋",
-                "description": "I'm now watching for BZ2 Vet Strat games and will ping accordingly for them, including:\n\n• When a game of interest is first detected\n• When players join said game\n\nEach game within a session gets its own Discord embed and is updated in real-time.",
+                "description": "I'm now watching for BZ2 Vet Strat games and will only post the most relevant ones here without pings, so be sure to ping when needed!\n\nEach game within a session gets its own Discord embed and is updated in real-time.\n\nIf you are a regular game host and don't want a game of yours to show up here, use 'test' for your game name.",
                 "color": 3066993  # Discord green color
             }]
         }
