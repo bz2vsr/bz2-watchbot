@@ -138,7 +138,7 @@ class BZBot:
                 mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
 
             embed = {
-                "title": "Join Game",
+                "title": "▶️  Join Game",
                 "url": f"steam://run/1276390//+connect%20{session.get('Address')}",
                 "color": 5793266,
                 "fields": [
@@ -253,6 +253,11 @@ class BZBot:
                 },
                 "color": embed_color  # Use our dynamic color
             }
+
+            # Add "View in Browser" link at the top
+            embed["fields"].extend([
+                {"name": "", "value": "[View in Browser](https://bz2vsr.com/)", "inline": False},
+            ])
 
             embed["fields"].extend([
                 {"name": "🎮  Game Name", "value": f"```{session.get('Name', 'Unnamed')}```", "inline": True},
@@ -745,24 +750,40 @@ class BZBot:
         if session_id in self.message_ids:
             message_id = self.message_ids[session_id]
             
+            # Create the embed once and modify it as needed
+            last_embed = await self.format_session_embed(session, mods, api_response)
+            
+            # Get the current mod field before we modify anything
+            current_mod_field = None
+            for field in last_embed.get('fields', []):
+                if field.get('name', '').strip() == '':
+                    current_mod_field = field.get('value', 'Unknown')
+                    break
+
             game_data = session.get('Game', {})
             mod_id = str(game_data.get('Mod', ''))
+            game_version = game_data.get('Version', 'Unknown')
             mod_field = "Unknown"
-            game_version = game_data.get('Version', 'Unknown')  # Get the game version
 
+            # Try to get mod info from current mods
             if mod_id in mods:
                 mod_data = mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})\n{game_version}" if mod_url else f"{mod_name}\n{game_version}"
+            # Try to get mod info from last known mods
             elif mod_id in self.last_known_mods:
                 mod_data = self.last_known_mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
                 mod_field = f"[{mod_name}]({mod_url})\n{game_version}" if mod_url else f"{mod_name}\n{game_version}"
-            
-            last_embed = await self.format_session_embed(session, mods, api_response)
-            
+            # If mod info not found, use the current embed's mod field
+            elif current_mod_field:
+                mod_field = current_mod_field
+                if not mod_field.endswith(game_version):
+                    mod_field = f"{mod_field}\n{game_version}"
+
+            # Update the teams in the embed
             teams = {}
             for player in session.get('Players', []):
                 team_data = player.get('Team', {})
@@ -820,6 +841,7 @@ class BZBot:
                 player_with_stats = f"{player_name} ({kills}/{deaths}/{score})"
                 teams[team_id].append(player_with_stats)
             
+            # Update the embed fields
             for field in last_embed["fields"]:
                 if field.get("name") == "👥  **TEAM 1**":
                     team1_players = teams.get('1', [])
@@ -831,16 +853,13 @@ class BZBot:
                     else:
                         team2_players = teams.get('2', [])
                         field["value"] = "\n".join(team2_players) if team2_players else "*Empty*"
-            
+                elif field.get("name", "").strip() == "":
+                    field["value"] = mod_field
+
             last_embed["title"] = "❌  Session Ended"
             last_embed.pop("url", None)
             last_embed["color"] = 15158332  # Red for ended sessions
-            
-            for field in last_embed["fields"]:
-                if field.get("name", "").strip() == "":
-                    field["value"] = mod_field
-                    break
-            
+
             webhook_data = {
                 "embeds": [last_embed]
             }
