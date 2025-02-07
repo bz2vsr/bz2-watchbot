@@ -446,8 +446,16 @@ class BZBot:
                                 else:
                                     host_name = host_player.get('Name', 'Unknown')
                         
-                        # Only add notification tag for new sessions, not for new games within a session
-                        notification_suffix = config.NOTIFICATION_TAG if host_is_monitored and session_id not in self.active_sessions else ""
+                        # Initialize notification suffix
+                        notification_suffix = ""
+                        if host_is_monitored and session_id not in self.active_sessions:
+                            # Don't add notification tag if the host is m.s or Sev
+                            steam_data = host_ids.get('Steam', {})
+                            steam_id = str(steam_data.get('ID')) if steam_data else None
+                            no_ping_ids = ["76561198820311491", "add_other_steam_ids_here"]  # m.s and Sev
+                            if not (steam_data and steam_id in no_ping_ids):
+                                notification_suffix = config.NOTIFICATION_TAG
+                        
                         webhook_data = {
                             "username": "WatchBot",
                             "content": f"🆕 Game Up (Host: {host_name}) {notification_suffix}",
