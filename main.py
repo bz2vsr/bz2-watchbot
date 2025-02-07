@@ -587,26 +587,33 @@ class BZBot:
         # First check if it's a test game
         if session.get('Name', '').lower() == 'test':
             return False
-            
+        
         # Then check if it's a STRAT game
         if session.get('Level', {}).get('GameMode', {}).get('ID') != "STRAT":
             return False
         
-        # Finally check for monitored players
-        for player in session.get('Players', []):
-            player_ids = player.get('IDs', {})
+        # Get the host player (first player in the list)
+        players = session.get('Players', [])
+        if not players:
+            return False
+        
+        host_player = players[0]
+        player_ids = host_player.get('IDs', {})
+        
+        # Check if host's Steam ID is monitored
+        steam_data = player_ids.get('Steam', {})
+        if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
+            return True
+        
+        # Check if host's GOG ID is monitored
+        gog_data = player_ids.get('Gog', {})
+        if gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
+            return True
+        
+        # Check if host's name is monitored
+        if host_player.get('Name') in config.MONITORED_STEAM_IDS:
+            return True
             
-            steam_data = player_ids.get('Steam', {})
-            if steam_data and str(steam_data.get('ID')) in config.MONITORED_STEAM_IDS:
-                return True
-            
-            gog_data = player_ids.get('Gog', {})
-            if gog_data and str(gog_data.get('ID')) in config.MONITORED_STEAM_IDS:
-                return True
-            
-            if player.get('Name') in config.MONITORED_STEAM_IDS:
-                return True
-                
         return False
 
     async def check_sessions(self):
@@ -655,7 +662,7 @@ class BZBot:
                                 old_embed = await self.format_session_embed(self.active_sessions[session_id], self.mods, api_response)
                                 old_embed['title'] = "❌  Game Ended"
                                 old_embed.pop('url', None)
-                                old_embed['color'] = 15158332
+                                old_embed['color'] = 15105570  # Orange for ended games
                                 
                                 webhook_url = f"{config.DISCORD_WEBHOOK_URL}/messages/{old_message_id}"
                                 patch_data = {"embeds": [old_embed]}
@@ -665,7 +672,12 @@ class BZBot:
                             except Exception as e:
                                 logger.error(f"Error updating old embed: {e}")
                             
+                            # Remove the old message ID so we can create a new embed
                             self.message_ids.pop(session_id, None)
+                            
+                            # Create new embed for the new game state
+                            logger.info(f"Creating new embed for session: {session_name}")
+                            await self.send_discord_notification(session, self.mods, is_new=True, new_session_count=1, api_response=api_response)
                     
                     # Handle player count changes
                     max_players = session.get('PlayerTypes', [{}])[0].get('Max', 0)
@@ -820,7 +832,7 @@ class BZBot:
             
             last_embed["title"] = "❌  Session Ended"
             last_embed.pop("url", None)
-            last_embed["color"] = 15158332
+            last_embed["color"] = 15158332  # Red for ended sessions
             
             for field in last_embed["fields"]:
                 if field.get("name", "").strip() == "":
