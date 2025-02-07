@@ -441,7 +441,8 @@ class BZBot:
                                 else:
                                     host_name = host_player.get('Name', 'Unknown')
                         
-                        notification_suffix = config.NOTIFICATION_TAG if host_is_monitored else ""
+                        # Only add notification tag for new sessions, not for new games within a session
+                        notification_suffix = config.NOTIFICATION_TAG if host_is_monitored and session_id not in self.active_sessions else ""
                         webhook_data = {
                             "username": "WatchBot",
                             "content": f"🆕 Game Up (Host: {host_name}) {notification_suffix}",
@@ -747,17 +748,18 @@ class BZBot:
             game_data = session.get('Game', {})
             mod_id = str(game_data.get('Mod', ''))
             mod_field = "Unknown"
-            
+            game_version = game_data.get('Version', 'Unknown')  # Get the game version
+
             if mod_id in mods:
                 mod_data = mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
-                mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
+                mod_field = f"[{mod_name}]({mod_url})\n{game_version}" if mod_url else f"{mod_name}\n{game_version}"
             elif mod_id in self.last_known_mods:
                 mod_data = self.last_known_mods[mod_id]
                 mod_name = mod_data.get('Name', 'Unknown')
                 mod_url = mod_data.get('Url', '')
-                mod_field = f"[{mod_name}]({mod_url})" if mod_url else mod_name
+                mod_field = f"[{mod_name}]({mod_url})\n{game_version}" if mod_url else f"{mod_name}\n{game_version}"
             
             last_embed = await self.format_session_embed(session, mods, api_response)
             
