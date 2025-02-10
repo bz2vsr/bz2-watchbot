@@ -20,3 +20,15 @@ Relies on the MultiplayerSessionList API by Nielk1 ([Github](https://github.com/
 - python-dotenv
 - aiohttp
 - watchdog
+
+## Installation
+
+**WARNING:** add your `.env` file to `.gitignore` to avoid exposing your webhook URL. Anyone with your webhook URL can post to your channel.
+
+1. Clone or download this repository.
+2. Install dependencies with `pip install -r requirements.txt`
+3. Create a file called `.env` in the root directory and add this line `DISCORD_WEBHOOK_URL=<your_webhook_url>`
+4. Configure the `NOTIFICATION_TAG` and `MONITORED_STEAM_IDS` variables in `config.py` to fit your needs.
+5. Run the bot `python main.py`
+
+**NOTE:** `run.py` runs `main.py` in a wrapper that will automatically reload the bot if any changes are made to the code. This is useful for local development, and may also be useful in production depending on your server setup.

@@ -8,7 +8,7 @@ API_URL = "https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bi
 NOTIFICATION_TAG = "<@&1137622254621032500>"  # ID-based role ping for @BZ2Player
 # NOTIFICATION_TAG = "NO_PING"  # Don't ping at all
 
-
+# one of these players must be the game host, for a game to be posted
 MONITORED_STEAM_IDS = [
     "76561198006115793",  # Domakus
     "76561198846500539",  # Xohm
