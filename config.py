@@ -13,7 +13,7 @@ MONITORED_STEAM_IDS = [
     "76561198006115793",  # Domakus
     "76561198846500539",  # Xohm
     "bz2Cyber",           # Cyber
-    "herpmcderperson",    # Herp
+    "76561197962996353",    # Herp
     "bzlolol",            # blue_banana
     "running-roxas",      # Sly
     "76561198820311491",  # m.s 
