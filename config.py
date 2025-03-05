@@ -1,12 +1,71 @@
 import os
 from dotenv import load_dotenv
+from typing import Dict, NamedTuple
+import logging
+
+# Configure logging
+logger = logging.getLogger('bzbot')
 
 load_dotenv()
 
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
+class WebhookConfig(NamedTuple):
+    url: str
+    notification_tag: str
+
+def validate_webhook_configs() -> Dict[str, WebhookConfig]:
+    """
+    Validates webhook configurations and returns only valid ones.
+    A valid webhook must have a non-empty URL from environment variables.
+    """
+    raw_configs = {
+        "VSRCORD": WebhookConfig(
+            url=os.getenv('VSRCORD_WEBHOOK_URL'),
+            notification_tag="<@&1137622254621032500>"  # ID for @BZ2Player
+        ),
+        "STRATCORD": WebhookConfig(
+            url=os.getenv('STRATCORD_WEBHOOK_URL'),
+            notification_tag="<@&1119505038058991667>"  # ID for @BZ2Player
+        ),
+        # "DEVWB_1": WebhookConfig(
+        #     url=os.getenv('DEV_WEBHOOK_1'),
+        #     notification_tag="<@&1302048771961520188>"  # ID-based role ping for @BZ2Player
+        # ),
+        # "DEVWB_2": WebhookConfig(
+        #     url=os.getenv('DEV_WEBHOOK_2'),
+        #     notification_tag="no-role-id"  # ID-based role ping for @BZ2Player
+        # ),
+        # Add more webhooks as needed, for example:
+        # "SECONDARY": WebhookConfig(
+        #     url=os.getenv('DISCORD_WEBHOOK_URL_2'),
+        #     notification_tag="<@&your_role_id_here>"
+        # ),
+    }
+
+    valid_configs = {}
+    for webhook_id, config in raw_configs.items():
+        if not config.url:
+            logger.warning(f"Skipping webhook '{webhook_id}': Missing URL in environment variables")
+            continue
+        if not isinstance(config.url, str):
+            logger.warning(f"Skipping webhook '{webhook_id}': URL must be a string")
+            continue
+        if not config.url.startswith(('http://', 'https://')):
+            logger.warning(f"Skipping webhook '{webhook_id}': Invalid URL format")
+            continue
+        valid_configs[webhook_id] = config
+        logger.info(f"Loaded webhook configuration for '{webhook_id}'")
+
+    if not valid_configs:
+        logger.warning("No valid webhook configurations found! Please check your .env file.")
+
+    return valid_configs
+
+# Dictionary of webhook configurations
+# Each key is a unique identifier for the webhook (e.g., "MAIN", "SECONDARY")
+# Each value is a WebhookConfig object containing the webhook URL and notification tag
+DISCORD_WEBHOOKS: Dict[str, WebhookConfig] = validate_webhook_configs()
+
 API_URL = "https://multiplayersessionlist.iondriver.com/api/1.0/sessions?game=bigboat:battlezone_combat_commander" 
-NOTIFICATION_TAG = "<@&1137622254621032500>"  # ID-based role ping for @BZ2Player
-# NOTIFICATION_TAG = "NO_PING"  # Don't ping at all
 
 # one of these players must be the game host, for a game to be posted
 MONITORED_STEAM_IDS = [
