@@ -465,7 +465,7 @@ class BZBot:
                                 # Don't add notification tag if the host is m.s or Sev
                                 steam_data = host_ids.get('Steam', {})
                                 steam_id = str(steam_data.get('ID')) if steam_data else None
-                                no_ping_ids = []  # ping for everyone
+                                no_ping_ids = ["add_steam_ids_here"]  # ping for everyone
                                 # no_ping_ids = ["76561198825563594","76561198820311491", "76561199653748651"]  # mav | m.s | sev
                                 if not (steam_data and steam_id in no_ping_ids):
                                     notification_suffix = webhook_config.notification_tag
