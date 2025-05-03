@@ -20,13 +20,13 @@ def validate_webhook_configs() -> Dict[str, WebhookConfig]:
     raw_configs = {
         "VSRCORD": WebhookConfig(
             url=os.getenv('VSRCORD_WEBHOOK_URL'),
-            notification_tag=""  # ID for @BZ2Player
-            # notification_tag="<@&1137622254621032500>"  # ID for @BZ2Player
+            notification_tag="<@&1137622254621032500>"  # ID for @BZ2Player
+            # notification_tag=""  # ID for @BZ2Player
         ),
-        "STRATCORD": WebhookConfig(
-            url=os.getenv('STRATCORD_WEBHOOK_URL'),
-            notification_tag="<@&1119505038058991667>"  # ID for @BZ2Player
-        ),
+        # "STRATCORD": WebhookConfig(
+        #     url=os.getenv('STRATCORD_WEBHOOK_URL'),
+        #     notification_tag="<@&1119505038058991667>"  # ID for @BZ2Player
+        # ),
         # "DEVWB_1": WebhookConfig(
         #     url=os.getenv('DEV_WEBHOOK_1'),
         #     notification_tag="<@&1302048771961520188>"  # ID-based role ping for @BZ2Player
