@@ -23,6 +23,10 @@ def validate_webhook_configs() -> Dict[str, WebhookConfig]:
             notification_tag="<@&1137622254621032500>"  # ID for @BZ2Player
             # notification_tag=""  # ID for @BZ2Player
         ),
+        "GREENCORD": WebhookConfig(
+            url=os.getenv('GREENCORD_WEBHOOK_URL'),
+            notification_tag=""  # no role ping for greencord 
+        ),
         # "STRATCORD": WebhookConfig(
         #     url=os.getenv('STRATCORD_WEBHOOK_URL'),
         #     notification_tag="<@&1119505038058991667>"  # ID for @BZ2Player
